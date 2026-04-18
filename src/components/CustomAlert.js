@@ -2,7 +2,6 @@ import LottieView from 'lottie-react-native';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Theme } from '../theme/colors'; // Pastikan path benar
 import GlassmorphicBox from './GlassmorphicBox'; // Pastikan path benar
-
 const CustomAlert = ({ 
   visible, 
   title, 

@@ -35,7 +35,7 @@ export default function SplashScreen() {
 
     // 2. Navigasi ke Dashboard setelah animasi Lottie dirasa cukup (misal 4 detik)
     const timer = setTimeout(() => {
-      router.replace('/(tabs)'); 
+      router.replace('/'); 
     }, 4500);
 
     return () => clearTimeout(timer);

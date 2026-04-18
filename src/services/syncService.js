@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import db from '../database/sqlite';
 import { supabase } from '../database/supabase';
@@ -72,40 +72,50 @@ export const SyncService = {
   /**
    * 2. PULL MASTER DATA (Termasuk Profil & Jadwal Waktu)
    */
-  pullMasterData: async () => {
-    await SyncService.ensureColumns();
-    const isOnline = await SyncService.checkConnection();
-    if (!isOnline) return { success: false, message: 'Butuh internet' };
+// Di dalam SyncService.js
+pullMasterData : async () =>{
+  try {
+    // --- 1. TARIK DATA SISWA ---
+    
+    const { data: students, error: studentError } = await supabase
+      .from('students')
+      .select('*');
 
-    try {
-      // Pull Profil Sekolah (Nama, Logo, Waktu)
-      await SyncService.pullSchoolProfile();
+    if (studentError) throw studentError;
 
-      // Pull Data Kelas
-      const { data: classes } = await supabase.from('classes').select('*');
-      if (classes) {
-        for (const c of classes) {
-          await db.runAsync('INSERT OR REPLACE INTO classes (id, class) VALUES (?, ?)', [c.id, c.class]);
-        }
-      }
+    for (const s of students) {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO students (nis, nisn, name, class, room, address, gender, qr_code_data) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [s.nis, s.nisn, s.name, s.class, s.room, s.address, s.gender, s.qr_code_data]
+      );
+    }
 
-      // Pull Data Santri
-      const { data: students, error: studentErr } = await supabase.from('students').select('*');
-      if (studentErr) throw studentErr;
+    // --- 2. TARIK RIWAYAT ABSENSI ---
+    const { data: logs, error: logError } = await supabase
+      .from('attendance_logs')
+      .select('*');
 
-      for (const s of students) {
+    if (logError) throw logError;
+
+    if (logs && logs.length > 0) {
+      for (const log of logs) {
+        // Cek dulu apakah log ini sudah ada di lokal berdasarkan NIS dan Timestamp 
+        // agar tidak double saat ditekan tombol "Update" berkali-kali
         await db.runAsync(
-          'INSERT OR REPLACE INTO students (nis, nisn, name, class, room, synced) VALUES (?, ?, ?, ?, ?, ?)',
-          [s.nis, s.nisn, s.name, s.class, s.room, 1]
+          `INSERT INTO attendance_logs (nis, status, session, timestamp, synced) 
+           VALUES (?, ?, ?, ?, 1)`, 
+          [log.nis, log.status, log.session, log.timestamp]
         );
       }
-
-      return { success: true };
-    } catch (error) {
-      console.error('Pull Master Data Error:', error.message);
-      return { success: false, error: error.message };
     }
-  },
+
+    return { success: true };
+  } catch (e) {
+    console.error("Pull Error:", e.message);
+    return { success: false, message: e.message };
+  }
+},
 
   /**
    * 3. PUSH MASTER DATA: Kirim santri baru ke Cloud
@@ -141,31 +151,56 @@ export const SyncService = {
   /**
    * 4. PULL & SYNC PROFILE (Nama, Logo, Waktu)
    */
-  pullSchoolProfile: async () => {
-    try {
-      const { data, error } = await supabase.from('school_profile').select('*').eq('id', 1).single();
-      if (error) throw error;
+pullSchoolProfile: async () => {
+  try {
+    // 1. Ambil data dari Supabase
+    const { data, error } = await supabase
+      .from('school_profile')
+      .select('*')
+      .eq('id', 1)
+      .single();
 
-      if (data) {
-        const currentSettings = await AsyncStorage.getItem('@app_settings');
-        const parsed = currentSettings ? JSON.parse(currentSettings) : {};
-        
-        const newSettings = {
-          ...parsed,
-          school_name: data.school_name,
-          school_logo: data.school_logo,
-          holiday_mode: data.holiday_mode,
-          checkin_time: data.checkin_time || '07:00',
-          checkout_time: data.checkout_time || '14:00'
-        };
+    if (error) throw error;
 
-        await AsyncStorage.setItem('@app_settings', JSON.stringify(newSettings));
-        return newSettings;
-      }
-    } catch (error) {
-      console.error('Pull Profile Error:', error.message);
+    if (data) {
+      // 2. SIMPAN KE SQLITE (Local Database)
+      // Kita gunakan INSERT OR REPLACE atau UPDATE agar data di id=1 diperbarui
+      await db.runAsync(
+        `UPDATE school_profile SET 
+          school_name = ?, 
+          school_logo= ?,
+          last_updated = ? 
+         WHERE id = 1`,
+        [
+          data.school_name, 
+          data.school_logo,
+          data.last_update,
+        ]
+      );
+
+      // 3. SIMPAN KE ASYNCSTORAGE (Untuk UI/Settings State)
+      const currentSettings = await AsyncStorage.getItem('@app_settings');
+      const parsed = currentSettings ? JSON.parse(currentSettings) : {};
+      
+      const newSettings = {
+        ...parsed,
+        school_name: data.school_name,
+        school_logo: data.school_logo,
+        is_holiday_mode: data.is_holiday_mode,
+        checkin_time: data.checkin_time || '07:00',
+        checkout_time: data.checkout_time || '14:00'
+      };
+
+      await AsyncStorage.setItem('@app_settings', JSON.stringify(newSettings));
+      
+      console.log(data.school_name);
+      return newSettings;
     }
-  },
+  } catch (error) {
+    console.error('Pull Profile Error:', error.message);
+    return null;
+  }
+},
 
   /**
    * 5. UPLOAD LOGO TO STORAGE
@@ -210,18 +245,28 @@ uploadLogo: async (uri) => {
    * 6. MAINTENANCE: EXPORT DATABASE
    */
   exportDatabase: async () => {
-    try {
-      const dbUri = `${FileSystem.documentDirectory}SQLite/aone_database.db`; // Pastikan nama file cocok
-      const fileInfo = await FileSystem.getInfoAsync(dbUri);
-      if (!fileInfo.exists) return { success: false, message: "File DB tidak ditemukan" };
+  try {
+    const dbName = "aone_database.db";
+    const originalUri = `${FileSystem.documentDirectory}SQLite/${dbName}`;
+    const temporaryUri = `${FileSystem.cacheDirectory}${dbName}`; // Pindah ke cache biar bisa diakses luar
 
-      await Sharing.shareAsync(dbUri);
-      return { success: true };
-    } catch (e) {
-      return { success: false, message: e.message };
-    }
-  },
+    // Copy file dari folder sistem ke folder cache
+    await FileSystem.copyAsync({
+      from: originalUri,
+      to: temporaryUri
+    });
 
+    // Share dari lokasi cache
+    await Sharing.shareAsync(temporaryUri, {
+      UTI: 'public.database', // Untuk iOS
+      mimeType: 'application/octet-stream',
+    });
+
+    return { success: true };
+  } catch (e) {
+    return { success: false, message: "Gagal ekspor: " + e.message };
+  }
+},
   /**
    * 7. BACKGROUND SYNC
    */

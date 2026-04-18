@@ -1,6 +1,7 @@
-import { Bell, UserCheck, UserMinus, UserPlus, Users, Zap } from 'lucide-react-native';
-import React, { useEffect, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Bell, TrendingUp, UserCheck, UserMinus, UserPlus, Users, Zap } from 'lucide-react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { Dimensions, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { LineChart } from 'react-native-chart-kit'; // Pastikan sudah instal ini
 import Card from '../../components/Card';
 import GlassmorphicBox from '../../components/GlassmorphicBox';
 import SyncIndicator from '../../components/SyncIndicator';
@@ -8,36 +9,50 @@ import { LocalDB } from '../../database/sqlite';
 import { AIInsightService } from '../../services/aiInsight';
 import { Theme, hexToRGBA } from '../../theme/colors';
 
+const screenWidth = Dimensions.get("window").width;
+
 export default function DashboardScreen() {
   const [stats, setStats] = useState({ hadir: 0, izin: 0, alfa: 0 });
+  const [chartData, setChartData] = useState([0, 0, 0, 0, 0, 0, 0]);
   const [aiInsight, setAiInsight] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-
-  // Load Statistik & AI Insight
+// 1. Variabel untuk Nama Sekolah (Defaultnya "Memuat...")
+  const [schoolInfo, setSchoolInfo] = useState({ name: 'Memuat...' });
+  // 1. Load Semua Data (Statistik, Grafik, & AI)
   const loadDashboardData = async () => {
-    // 1. Ambil data real-time dari SQLite
-    const dailyData = await LocalDB.getDailyStats();
-    const newStats = { hadir: 0, izin: 0, alfa: 0 };
-    
-    dailyData.forEach(item => {
-      if (newStats.hasOwnProperty(item.status.toLowerCase())) {
-        newStats[item.status.toLowerCase()] = item.total;
-      }
-    });
-    setStats(newStats);
+    try {
+      const profile = await LocalDB.getSchoolProfile();
+      setSchoolInfo({ name: profile.school_name });
+      // Ambil data harian untuk box statistik
+      const dailyData = await LocalDB.getDailyStats();
+      const newStats = { hadir: 0, izin: 0, alfa: 0 };
+      dailyData.forEach(item => {
+        const status = item.status.toLowerCase();
+        if (newStats.hasOwnProperty(status)) newStats[status] = item.total;
+      });
+      setStats(newStats);
 
-    // 2. Ambil Insight dari "AI Engine" kita
-    const insights = await AIInsightService.getAtRiskStudents();
-    if (insights.length > 0) {
-      setAiInsight(insights[0]); // Ambil satu insight paling prioritas
+      // Ambil data mingguan untuk grafik
+      const weeklyStats = await LocalDB.getWeeklyAttendance(); // Buat fungsi ini di sqlite.js
+      if (weeklyStats) setChartData(weeklyStats);
+
+      // Ambil Insight AI
+      const insights = await AIInsightService.getAtRiskStudents();
+      if (insights.length > 0) setAiInsight(insights[0]);
+      
+    } catch (error) {
+      console.error("Dashboard Load Error:", error);
     }
   };
 
+  // 2. Auto Refresh setiap 30 detik
   useEffect(() => {
     loadDashboardData();
+    const interval = setInterval(loadDashboardData, 30000);
+    return () => clearInterval(interval);
   }, []);
 
-  const onRefresh = React.useCallback(() => {
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
     loadDashboardData().then(() => setRefreshing(false));
   }, []);
@@ -54,7 +69,7 @@ export default function DashboardScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.welcomeText}>Halo, Administrator</Text>
-          <Text style={styles.schoolName}>Ponpes Miftahul Ulum</Text>
+          <Text style={styles.schoolName}>{schoolInfo?.name || "Memuat..."}</Text>
         </View>
         <TouchableOpacity style={styles.notifBtn}>
           <Bell color={Theme.textMain} size={22} />
@@ -62,7 +77,7 @@ export default function DashboardScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* SYNC STATUS INDICATOR */}
+      {/* SYNC STATUS */}
       <View style={styles.syncWrapper}>
         <SyncIndicator isOnline={true} unsyncedCount={3} />
       </View>
@@ -90,7 +105,36 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      {/* AI INSIGHT SECTION (Predictive Analysis) */}
+      {/* GRAFIK KEHADIRAN SECTION */}
+      <View style={styles.chartContainer}>
+        <View style={styles.chartHeader}>
+          <TrendingUp color={Theme.primary} size={18} />
+          <Text style={styles.chartTitle}>Tren Kehadiran 7 Hari Terakhir</Text>
+        </View>
+        <LineChart
+          data={{
+            labels: ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"],
+            datasets: [{ data: chartData }]
+          }}
+          width={screenWidth - 48}
+          height={180}
+          chartConfig={{
+            backgroundColor: Theme.card,
+            backgroundGradientFrom: Theme.card,
+            backgroundGradientTo: Theme.card,
+            decimalPlaces: 0,
+            color: (opacity = 1) => hexToRGBA(Theme.primary, opacity),
+            labelColor: (opacity = 1) => hexToRGBA(Theme.textMuted, opacity),
+            propsForDots: { r: "4", strokeWidth: "2", stroke: Theme.primary },
+            fillShadowGradient: Theme.primary,
+            fillShadowGradientOpacity: 0.2,
+          }}
+          bezier
+          style={styles.chartStyle}
+        />
+      </View>
+
+      {/* AI INSIGHT */}
       {aiInsight && (
         <Card statusColor={Theme.primary} style={styles.aiCard}>
           <View style={styles.aiHeader}>
@@ -114,7 +158,12 @@ export default function DashboardScreen() {
           <Text style={styles.actionText}>Data Siswa</Text>
         </TouchableOpacity>
         
-        {/* Tambahkan aksi lainnya di sini */}
+        <TouchableOpacity style={styles.actionItem} onPress={() => {/* Navigasi Backup */}}>
+          <View style={[styles.actionIcon, { backgroundColor: Theme.success }]}>
+            <Zap color={Theme.background} size={24} />
+          </View>
+          <Text style={styles.actionText}>Backup DB</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       <View style={{ height: 100 }} /> 
@@ -132,20 +181,24 @@ const styles = StyleSheet.create({
   notifBadge: { position: 'absolute', top: 10, right: 12, width: 8, height: 8, borderRadius: 4, backgroundColor: Theme.danger, borderWidth: 2, borderColor: Theme.card },
   syncWrapper: { marginBottom: 25, alignItems: 'flex-start' },
   statsGrid: { flexDirection: 'row', gap: 15, marginBottom: 25 },
-  mainStatBox: { flex: 1.2, alignItems: 'center', justifyContent: 'center', paddingVertical: 25 },
+  mainStatBox: { flex: 1.2, alignItems: 'center', justifyContent: 'center', paddingVertical: 25, borderRadius: 24, overflow: 'hidden' },
   statNumber: { color: Theme.textMain, fontSize: 42, fontWeight: '900', marginVertical: 5 },
   statLabel: { color: Theme.textMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
   sideStats: { flex: 1, gap: 15 },
   miniStat: { flex: 1, borderRadius: 20, padding: 15, justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
   miniStatNumber: { fontSize: 22, fontWeight: '900', marginTop: 4 },
   miniStatLabel: { color: Theme.textMuted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
-  aiCard: { backgroundColor: hexToRGBA(Theme.card, 0.8), borderStyle: 'dashed' },
+  chartContainer: { backgroundColor: Theme.card, padding: 16, borderRadius: 24, marginBottom: 25, borderWidth: 1, borderColor: Theme.border },
+  chartHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 15 },
+  chartTitle: { color: Theme.textMain, fontSize: 14, fontWeight: '800' },
+  chartStyle: { marginLeft: -16, borderRadius: 16 },
+  aiCard: { backgroundColor: hexToRGBA(Theme.card, 0.8), borderStyle: 'dashed', marginBottom: 25 },
   aiHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 8 },
   aiTitle: { color: Theme.primary, fontSize: 12, fontWeight: '900', letterSpacing: 1 },
   aiBody: { color: Theme.textMain, fontSize: 14, lineHeight: 20, fontWeight: '500' },
   aiAction: { marginTop: 15, paddingVertical: 8, borderTopWidth: 1, borderTopColor: Theme.border },
   aiActionText: { color: Theme.primary, fontSize: 12, fontWeight: 'bold', textAlign: 'center' },
-  sectionTitle: { color: Theme.textMain, fontSize: 18, fontWeight: '800', marginBottom: 15, marginTop: 10 },
+  sectionTitle: { color: Theme.textMain, fontSize: 18, fontWeight: '800', marginBottom: 15 },
   actionScroll: { flexDirection: 'row' },
   actionItem: { alignItems: 'center', marginRight: 25 },
   actionIcon: { width: 56, height: 56, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },

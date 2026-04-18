@@ -3,7 +3,7 @@ import * as SQLite from 'expo-sqlite';
 /**
  * Menggunakan Nama DB Baru (v2) untuk memaksa pembaharuan kolom nisn, room, address
  */
-const db = SQLite.openDatabaseSync('AOneSmartPresent_v2.db');
+export const db = SQLite.openDatabaseSync('AOneSmartPresent_v7.db');
 
 export const initDatabase = async () => {
   try {
@@ -20,7 +20,8 @@ export const initDatabase = async () => {
         room TEXT,           
         address TEXT,        
         gender TEXT,
-        qr_code_data TEXT
+        qr_code_data TEXT,
+        synced INTEGER DEFAULT 0
       );
 
       CREATE TABLE IF NOT EXISTS staff (
@@ -50,14 +51,24 @@ export const initDatabase = async () => {
         time_in_end TIME DEFAULT '07:30',
         time_out_start TIME DEFAULT '13:00',
         is_holiday_mode INTEGER DEFAULT 0
+     
       );
       CREATE TABLE IF NOT EXISTS school_profile (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
-  school_name TEXT,
-  school_logo TEXT,
-  last_updated DATETIME
-);
-      -- Default settings
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      school_name TEXT,
+      school_logo TEXT,
+      last_updated DATETIME
+    
+      );
+   
+
+    CREATE TABLE IF NOT EXISTS user_session (
+      id TEXT PRIMARY KEY,
+      email TEXT,
+      role TEXT,
+      last_login DATETIME
+    );
+      
       INSERT OR IGNORE INTO school_settings (id) VALUES (1);
     `);
     
@@ -78,7 +89,64 @@ export const LocalDB = {
       [nis, nisn, name, className || '-', room || '-', address || '-', gender || 'L']
     );
   },
-  
+getSchoolProfile: async () => {
+  try {
+    // Pakai try catch block yang sangat ketat
+    const result = await db?.getFirstAsync(
+      'SELECT school_name, school_logo FROM school_profile WHERE id = 1'
+    );
+    
+    // Pastikan result tidak null/undefined sebelum return
+    if (!result) {
+      return { school_name: 'Ponpes Miftahul Ulum', school_logo: null };
+    }
+
+    return { 
+      school_name: result.school_name || 'Ponpes Miftahul Ulum', 
+      school_logo: result.school_logo 
+    };
+  } catch (error) {
+    // Log error secara detail untuk debugging
+    console.log("Detail Error SQLite:", JSON.stringify(error));
+    return { school_name: 'Error Koneksi DB', school_logo: null };
+  }
+},
+// --- FUNGSI GRAFIK (Versi Modern) ---
+  getWeeklyAttendance: async () => {
+    try {
+      // 1. Gunakan nama tabel yang benar: attendance_logs
+      // 2. Gunakan kolom yang benar: timestamp (bukan created_at)
+      const query = `
+        SELECT 
+          date(timestamp, 'localtime') as tanggal, 
+          COUNT(*) as total 
+        FROM attendance_logs 
+        WHERE status = 'hadir' OR status = 'Hadir'
+        GROUP BY tanggal 
+        ORDER BY tanggal DESC 
+        LIMIT 7
+      `;
+
+      // 3. Gunakan db.getAllAsync (Tanpa transaction callback yang ribet)
+      const allRows = await db.getAllAsync(query);
+      
+      // Ambil angka totalnya saja
+      let data = allRows.map(item => item.total);
+
+      // Balik urutan agar hari terlama di kiri, hari terbaru di kanan
+      data.reverse();
+
+      // Jika data kurang dari 7 hari (karena sekolah baru mulai absen), isi dengan 0
+      while (data.length < 7) {
+        data.unshift(0);
+      }
+      
+      return data;
+    } catch (error) {
+      console.error("Gagal ambil data mingguan:", error);
+      return [0, 0, 0, 0, 0, 0, 0]; // Return default agar chart tidak crash
+    }
+  },
   updateStudent: async (oldNis, data) => {
     return await db.runAsync(
       'UPDATE students SET nis = ?, nisn = ?, name = ?, class = ?, room = ?, address = ? WHERE nis = ?',
@@ -150,7 +218,7 @@ export const LocalDB = {
   
   updateSettings: (schoolName, academicYear, timeIn, timeOut) => 
     db.runAsync(
-      'UPDATE school_settings SET school_name = ?, academic_year = ?, time_in_end = ?, time_out_start = ? WHERE id = 1',
+      'UPDATE school_settings SET school_name = ?, academic_year = ?, time_in_end = ?, time_out_start = ?,  WHERE id = 1',
       [schoolName, academicYear, timeIn, timeOut]
     ),
 

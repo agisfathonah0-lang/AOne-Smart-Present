@@ -41,7 +41,7 @@ export default function SettingsScreen({ navigation }) {
   const [lastSync, setLastSync] = useState('Belum pernah');
   const [showEditName, setShowEditName] = useState(false);
   const [tempName, setTempName] = useState('');
-  
+
   const [uploadVisible, setUploadVisible] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [stats, setStats] = useState({ local: 0, cloud: 0, unsynced: 0 });
@@ -54,69 +54,69 @@ export default function SettingsScreen({ navigation }) {
     checkout_time: '14:00',
   });
 
-  useEffect(() => { 
-    init(); 
+  useEffect(() => {
+    init();
   }, []);
 
   const init = async () => {
     await loadSettings();
     await fetchStats();
   };
-// 1. FUNGSI SETOR DATA SANTRI (MASTER)
-const handlePushMaster = async () => {
-  setLoadingType('sync_master');
-  try {
-    // 1. PAKSA ambil SEMUA data santri (abaikan status synced)
-    // Ini untuk memastikan data yang tertinggal dengan status '1' tetap terkirim
-    const allStudents = await db.getAllAsync('SELECT * FROM students');
+  // 1. FUNGSI SETOR DATA SANTRI (MASTER)
+  const handlePushMaster = async () => {
+    setLoadingType('sync_master');
+    try {
+      // 1. PAKSA ambil SEMUA data santri (abaikan status synced)
+      // Ini untuk memastikan data yang tertinggal dengan status '1' tetap terkirim
+      const allStudents = await db.getAllAsync('SELECT * FROM students');
 
-    if (allStudents.length === 0) {
-      Alert.alert("Info", "Tidak ada data santri di database lokal.");
+      if (allStudents.length === 0) {
+        Alert.alert("Info", "Tidak ada data santri di database lokal.");
+        setLoadingType(null);
+        return;
+      }
+
+      // 2. Mapping data sesuai struktur tabel Anda
+      const payload = allStudents.map(s => ({
+        nis: s.nis,
+        nisn: s.nisn,
+        name: s.name,
+        class: s.class,
+        room: s.room,
+        address: s.address,
+        gender: s.gender,
+        qr_code_data: s.qr_code_data,
+        updated_at: new Date().toISOString()
+      }));
+
+      // 3. Kirim ke Supabase dengan UPSERT
+      // onConflict: 'nis' artinya jika NIS sudah ada di cloud, timpa/update saja.
+      // Jika belum ada, maka masukkan sebagai data baru.
+      const { error } = await supabase
+        .from('students')
+        .upsert(payload, { onConflict: 'nis' });
+
+      if (error) throw error;
+
+      // 4. Pastikan semua data di lokal ditandai sudah sinkron (synced = 1)
+      const nises = allStudents.map(s => `'${s.nis}'`).join(',');
+      await db.execAsync(`UPDATE students SET synced = 1 WHERE nis IN (${nises})`);
+
+      // 5. Refresh angka statistik di layar
+      await fetchStats();
+
+      Alert.alert(
+        "Berhasil",
+        `Sinkronisasi total selesai. ${allStudents.length} data santri dipastikan masuk ke Cloud.`
+      );
+
+    } catch (e) {
+      console.error("Push Master Error:", e.message);
+      Alert.alert("Gagal Sinkron", "Periksa koneksi internet atau struktur tabel: " + e.message);
+    } finally {
       setLoadingType(null);
-      return;
     }
-
-    // 2. Mapping data sesuai struktur tabel Anda
-    const payload = allStudents.map(s => ({
-      nis: s.nis,           
-      nisn: s.nisn,
-      name: s.name,
-      class: s.class,
-      room: s.room,
-      address: s.address,
-      gender: s.gender,
-      qr_code_data: s.qr_code_data,
-      updated_at: new Date().toISOString()
-    }));
-
-    // 3. Kirim ke Supabase dengan UPSERT
-    // onConflict: 'nis' artinya jika NIS sudah ada di cloud, timpa/update saja.
-    // Jika belum ada, maka masukkan sebagai data baru.
-    const { error } = await supabase
-      .from('students')
-      .upsert(payload, { onConflict: 'nis' });
-
-    if (error) throw error;
-
-    // 4. Pastikan semua data di lokal ditandai sudah sinkron (synced = 1)
-    const nises = allStudents.map(s => `'${s.nis}'`).join(',');
-    await db.execAsync(`UPDATE students SET synced = 1 WHERE nis IN (${nises})`);
-
-    // 5. Refresh angka statistik di layar
-    await fetchStats();
-    
-    Alert.alert(
-      "Berhasil", 
-      `Sinkronisasi total selesai. ${allStudents.length} data santri dipastikan masuk ke Cloud.`
-    );
-    
-  } catch (e) {
-    console.error("Push Master Error:", e.message);
-    Alert.alert("Gagal Sinkron", "Periksa koneksi internet atau struktur tabel: " + e.message);
-  } finally {
-    setLoadingType(null);
-  }
-};
+  };
 
   // 2. FUNGSI SETOR ABSENSI
   const handlePushAttendance = async () => {
@@ -161,7 +161,7 @@ const handlePushMaster = async () => {
       const localRes = await db.getAllAsync('SELECT COUNT(*) as total FROM students');
       const unsyncedStud = await db.getAllAsync('SELECT COUNT(*) as total FROM students WHERE synced = 0');
       const unsyncedAbs = await db.getAllAsync('SELECT COUNT(*) as total FROM attendance_logs WHERE synced = 0');
-      
+
       const { count } = await supabase.from('students').select('*', { count: 'exact', head: true });
 
       setStats({
@@ -185,42 +185,47 @@ const handlePushMaster = async () => {
     if (syncTime) setLastSync(syncTime);
   };
 
-const updateSetting = async (key, value) => {
-  try {
-    // 1. Tentukan Mapping Nama (Agar UI tidak blank)
-    // Jika yang datang adalah 'logo_url' (dari cloud), simpan ke state sebagai 'school_logo'
-    const uiKey = (key === 'logo_url') ? 'school_logo' : key;
-    const localKey = (key === 'logo_url') ? 'school_logo' : key;
-    const cloudKey = (key === 'school_logo') ? 'logo_url' : key;
+  const updateSetting = async (key, value) => {
+    try {
+      // 1. MAPPING NAMA KOLOM (Sangat Penting!)
+      // Jika key dari UI adalah 'holiday_mode', ubah menjadi 'is_holiday_mode' agar cocok dengan SQLite
+      const dbCol = (key === 'holiday_mode') ? 'is_holiday_mode' : key;
 
-    // 2. UPDATE UI STATE (Ini yang bikin logo langsung tampil/hilang)
-    const newSettings = { ...settings, [uiKey]: value };
-    setSettings(newSettings);
-    
-    // 3. ASYNC STORAGE
-    await AsyncStorage.setItem('@app_settings', JSON.stringify(newSettings));
+      // 2. Update UI & Storage
+      const newSettings = { ...settings, [key]: value };
+      setSettings(newSettings);
+      await AsyncStorage.setItem('@app_settings', JSON.stringify(newSettings));
 
-    // 4. SQLITE LOKAL
-    await db.runAsync(
-      `INSERT OR REPLACE INTO school_profile (id, ${localKey}, last_updated) VALUES (1, ?, ?)`,
-      [value, new Date().toISOString()]
-    );
+      // 3. UPDATE SQLITE (Penyebab Error Anda di sini)
+      // Pastikan menggunakan dbCol yang sudah di-mapping
+      const dbValue = typeof value === 'boolean' ? (value ? 1 : 0) : (value ?? "");
 
-    // 5. SUPABASE CLOUD
-    const { error } = await supabase
-      .from('school_profile')
-      .upsert({ id: 1, [cloudKey]: value });
-      
-    if (error) console.log("Cloud Sync Error:", error.message);
-  } catch (e) {
-    console.error("Update Error:", e.message);
-  }
-};
+      await db.runAsync(
+        `UPDATE school_settings SET ${dbCol} = ? WHERE id = 1`,
+        [dbValue]
+      );
+
+      // 4. UPDATE SUPABASE
+      const { error } = await supabase
+        .from('school_profile')
+        .upsert({
+          id: 1,
+          [dbCol]: value,
+          last_updated: new Date().toISOString()
+        });
+
+      if (error) console.log("Supabase Sync Error:", error.message);
+      else console.log("✅ Berhasil Sinkron Lokal & Cloud");
+
+    } catch (e) {
+      console.error("Update Error:", e.message);
+    }
+  };
 
   const handlePickLogo = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsEditing: false, 
+      allowsEditing: false,
       quality: 0.5,
     });
 
@@ -237,7 +242,7 @@ const updateSetting = async (key, value) => {
     setUploadProgress(70);
 
     if (res.success) {
-      await updateSetting('logo_url', res.url);
+      await updateSetting('school_logo', res.url);
       setUploadProgress(100);
       setTimeout(() => {
         setUploadVisible(false);
@@ -259,14 +264,14 @@ const updateSetting = async (key, value) => {
 
         {/* TAB NAVIGATION */}
         <View style={styles.tabContainer}>
-          <TouchableOpacity 
-            style={[styles.tabButton, activeTab === 'profile' && styles.tabActive]} 
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'profile' && styles.tabActive]}
             onPress={() => setActiveTab('profile')}
           >
             <Text style={[styles.tabText, activeTab === 'profile' && styles.tabTextActive]}>PROFIL & WAKTU</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.tabButton, activeTab === 'system' && styles.tabActive]} 
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'system' && styles.tabActive]}
             onPress={() => setActiveTab('system')}
           >
             <Text style={[styles.tabText, activeTab === 'system' && styles.tabTextActive]}>SINKRON & DATA</Text>
@@ -299,7 +304,7 @@ const updateSetting = async (key, value) => {
                 <View style={{ flex: 1, marginLeft: 15 }}>
                   <Text style={styles.itemTitle}>Jam Masuk</Text>
                 </View>
-                <TextInput 
+                <TextInput
                   style={styles.timeInput}
                   value={settings.checkin_time}
                   onChangeText={(v) => updateSetting('checkin_time', v)}
@@ -312,7 +317,7 @@ const updateSetting = async (key, value) => {
                 <View style={{ flex: 1, marginLeft: 15 }}>
                   <Text style={styles.itemTitle}>Jam Pulang</Text>
                 </View>
-                <TextInput 
+                <TextInput
                   style={styles.timeInput}
                   value={settings.checkout_time}
                   onChangeText={(v) => updateSetting('checkout_time', v)}
@@ -326,7 +331,7 @@ const updateSetting = async (key, value) => {
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
                 <Text style={styles.statNum}>{stats.local}</Text>
-                <Text style={styles.statLabel}>Total HP</Text>
+                <Text style={styles.statLabel}>Total Santri</Text>
               </View>
               <View style={styles.statItem}>
                 <Text style={[styles.statNum, { color: Theme.primary }]}>{stats.cloud}</Text>
@@ -341,40 +346,41 @@ const updateSetting = async (key, value) => {
             </View>
 
             <Text style={styles.sectionLabel}>Sinkronisasi Cloud</Text>
-<View style={styles.syncGrid}>
-  {/* TOMBOL SETOR SANTRI */}
-  <TouchableOpacity 
-    style={[styles.syncActionBtn, { borderColor: '#10b981' }]} 
-    onPress={handlePushMaster}
-    disabled={loadingType !== null}
-  >
-    {loadingType === 'sync_master' ? (
-      <ActivityIndicator color="#10b981" />
-    ) : (
-      <Database color="#10b981" size={24} />
-    )}
-    <Text style={[styles.syncActionLabel, { color: '#10b981' }]}>Setor Santri</Text>
-  </TouchableOpacity>
+            <View style={styles.syncGrid}>
+              {/* TOMBOL SETOR SANTRI */}
+              <TouchableOpacity
+                style={[styles.syncActionBtn, { borderColor: '#10b981' }]}
+                onPress={handlePushMaster}
+                disabled={loadingType !== null}
+              >
+                {loadingType === 'sync_master' ? (
+                  <ActivityIndicator color="#10b981" />
+                ) : (
+                  <Database color="#10b981" size={24} />
+                )}
+                <Text style={[styles.syncActionLabel, { color: '#10b981' }]}>Setor Santri</Text>
+              </TouchableOpacity>
 
-  {/* TOMBOL SETOR ABSEN */}
-  <TouchableOpacity 
-    style={[styles.syncActionBtn, { borderColor: Theme.primary }]} 
-    onPress={handlePushAttendance}
-    disabled={loadingType !== null}
-  >
-    {loadingType === 'sync_absen' ? (
-      <ActivityIndicator color={Theme.primary} />
-    ) : (
-      <RefreshCw color={Theme.primary} size={24} />
-    )}
-    <Text style={[styles.syncActionLabel, { color: Theme.primary }]}>Setor Absen</Text>
-  </TouchableOpacity>
-</View>
+              {/* TOMBOL SETOR ABSEN */}
+              <TouchableOpacity
+                style={[styles.syncActionBtn, { borderColor: Theme.primary }]}
+                onPress={handlePushAttendance}
+                disabled={loadingType !== null}
+              >
+                {loadingType === 'sync_absen' ? (
+                  <ActivityIndicator color={Theme.primary} />
+                ) : (
+                  <RefreshCw color={Theme.primary} size={24} />
+                )}
+                <Text style={[styles.syncActionLabel, { color: Theme.primary }]}>Setor Absen</Text>
+              </TouchableOpacity>
+            </View>
 
             <Card style={styles.wideCard}>
               <TouchableOpacity style={styles.wideBtn} onPress={async () => {
                 setLoadingType('download');
                 await SyncService.pullMasterData();
+                await SyncService.pullSchoolProfile();
                 await fetchStats();
                 setLoadingType(null);
                 Alert.alert("Berhasil", "Data HP telah diperbarui dari Cloud.");
@@ -400,10 +406,12 @@ const updateSetting = async (key, value) => {
               <View style={styles.settingItem}>
                 <BellRing color={Theme.primary} size={20} />
                 <Text style={styles.itemTitle}>Mode Libur</Text>
-                <Switch 
-                  value={settings.holiday_mode} 
-                  onValueChange={(v) => updateSetting('holiday_mode', v)} 
-                  trackColor={{ true: Theme.primary }}
+                <Switch
+                  // Pastikan nama kuncinya sama: is_holiday_mode
+                  value={settings.is_holiday_mode}
+                  onValueChange={(v) => updateSetting('is_holiday_mode', v)}
+                  trackColor={{ true: Theme.primary, false: '#767577' }}
+                  thumbColor={settings.is_holiday_mode ? Theme.primary : '#f4f3f4'}
                 />
               </View>
             </Card>
@@ -451,7 +459,7 @@ const styles = StyleSheet.create({
   header: { marginBottom: 25 },
   title: { color: Theme.textMain, fontSize: 28, fontWeight: '900' },
   subtitle: { color: Theme.textMuted, fontSize: 14 },
-  
+
   // Tab Styles
   tabContainer: { flexDirection: 'row', backgroundColor: hexToRGBA(Theme.card, 0.5), borderRadius: 20, padding: 5, marginBottom: 25, borderWidth: 1, borderColor: hexToRGBA(Theme.border, 0.2) },
   tabButton: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 15 },
@@ -466,9 +474,9 @@ const styles = StyleSheet.create({
   editBadge: { position: 'absolute', bottom: 5, right: 5, backgroundColor: Theme.primary, padding: 6, borderRadius: 12 },
   schoolNameDisplay: { color: Theme.textMain, fontSize: 20, fontWeight: '800', textAlign: 'center' },
   editBtnText: { color: Theme.primary, fontSize: 12, marginTop: 10, fontWeight: '700' },
-  
+
   timeInput: { backgroundColor: hexToRGBA(Theme.primary, 0.1), color: Theme.primary, paddingHorizontal: 15, paddingVertical: 8, borderRadius: 12, fontWeight: '800', fontSize: 16, width: 85, textAlign: 'center', borderWidth: 1, borderColor: hexToRGBA(Theme.primary, 0.3) },
-  
+
   statsRow: { flexDirection: 'row', gap: 10, marginBottom: 25 },
   statItem: { flex: 1, backgroundColor: hexToRGBA(Theme.card, 0.4), padding: 15, borderRadius: 20, alignItems: 'center', borderWidth: 1, borderColor: hexToRGBA(Theme.border, 0.2) },
   statNum: { color: '#FFF', fontSize: 20, fontWeight: '900' },
@@ -489,7 +497,7 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: hexToRGBA(Theme.border, 0.3), marginHorizontal: 20 },
   logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 20 },
   logoutText: { color: Theme.danger, fontWeight: '800' },
-  
+
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', padding: 25 },
   uploadCard: { padding: 30, alignItems: 'center', borderRadius: 30 },
   uploadText: { color: Theme.textMain, fontSize: 18, fontWeight: '800', marginTop: 10 },

@@ -6,6 +6,7 @@ import * as Sharing from 'expo-sharing';
 import { Download, FileSpreadsheet, Plus, Printer, QrCode, Search, Trash2, UserPlus, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { Alert, FlatList, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import CustomAlert from '../../components/CustomAlert';
 import GlassmorphicBox from '../../components/GlassmorphicBox';
 import { LocalDB } from '../../database/sqlite';
 import { Theme } from '../../theme/colors';
@@ -412,6 +413,11 @@ const handleDelete = (nis, name) => {
           )}
         </View>
       </Modal>
+      <CustomAlert 
+       visible={alertConfig.visible}
+       {...alertConfig} 
+       onCancel={() => setAlertConfig({...alertConfig, visible: false})}
+     />
     </View>
   );
 }
