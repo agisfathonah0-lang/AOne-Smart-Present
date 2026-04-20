@@ -93,22 +93,33 @@ getSchoolProfile: async () => {
   try {
     // Pakai try catch block yang sangat ketat
     const result = await db?.getFirstAsync(
-      'SELECT school_name, school_logo FROM school_profile WHERE id = 1'
+      'SELECT school_name, school_logo FROM school_settings WHERE id = 1'
     );
-    
-    // Pastikan result tidak null/undefined sebelum return
-    if (!result) {
-      return { school_name: 'Ponpes Miftahul Ulum', school_logo: null };
-    }
-
     return { 
-      school_name: result.school_name || 'Ponpes Miftahul Ulum', 
+      // school_name: result.school_name || 'Ponpes Miftahul Ulum', 
+      school_name: result.school_name , 
       school_logo: result.school_logo 
     };
   } catch (error) {
     // Log error secara detail untuk debugging
     console.log("Detail Error SQLite:", JSON.stringify(error));
     return { school_name: 'Error Koneksi DB', school_logo: null };
+  }
+},
+getStaff: async () => {
+  try {
+    // Pakai try catch block yang sangat ketat
+    const result = await db?.getFirstAsync(
+      'SELECT username FROM staff WHERE id = 1'
+    );
+    return { 
+      // school_name: result.school_name || 'Ponpes Miftahul Ulum', 
+      username: result.username ,
+    };
+  } catch (error) {
+    // Log error secara detail untuk debugging
+    console.log("Detail Error SQLite:", JSON.stringify(error));
+    return { username: 'Error Koneksi DB'};
   }
 },
 // --- FUNGSI GRAFIK (Versi Modern) ---

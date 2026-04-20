@@ -198,6 +198,7 @@ pullSchoolProfile: async () => {
     }
   } catch (error) {
     console.error('Pull Profile Error:', error.message);
+    
     return null;
   }
 },

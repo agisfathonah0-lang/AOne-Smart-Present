@@ -126,7 +126,13 @@ export default function ReportsScreen() {
     const { uri } = await Print.printToFileAsync({ html });
     await Sharing.shareAsync(uri);
   };
-
+  // 2. Auto Refresh setiap 30 detik
+  useEffect(() => {
+    
+    fetchData();
+    const interval = setInterval(fetchData, 3000);
+    return () => clearInterval(interval);
+  }, []);
 const renderLogItem = ({ item }) => (
   <Card style={styles.logCard}>
     <View style={styles.logRow}>

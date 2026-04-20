@@ -494,7 +494,7 @@ const styles = StyleSheet.create({
   groupCard: { borderRadius: 28, marginBottom: 25, overflow: 'hidden' },
   settingItem: { flexDirection: 'row', alignItems: 'center', padding: 20 },
   itemTitle: { color: Theme.textMain, flex: 1, fontWeight: '600', fontSize: 15 },
-  divider: { height: 1, backgroundColor: hexToRGBA(Theme.border, 0.3), marginHorizontal: 20 },
+  divider: { height: 1, backgroundColor: hexToRGBA(Theme.border, 0.3), marginHorizontal: 10 },
   logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 20 },
   logoutText: { color: Theme.danger, fontWeight: '800' },
 

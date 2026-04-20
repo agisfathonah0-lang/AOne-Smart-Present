@@ -1,56 +1,48 @@
-# Welcome to your Expo app 👋
+# 🏫 AOne: Sistem Manajemen Sekolah (Offline-First)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+![AOne Header](https://img.shields.io/badge/Status-Development-orange?style=for-the-badge)
+![React Native](https://img.shields.io/badge/React_Native-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-07405E?style=for-the-badge&logo=sqlite&logoColor=white)
 
-## Get started
+**AOne** adalah solusi manajemen informasi sekolah dan sistem absensi cerdas berbasis **Offline-First**. Dirancang khusus untuk institusi pendidikan (seperti Pondok Pesantren) yang memerlukan kehandalan data tinggi meski dalam kondisi jaringan internet yang tidak stabil.
 
-1. Install dependencies
+---
 
-   ```bash
-   npm install
-   ```
+## ✨ Fitur Utama
 
-2. Start the app
+* **⚡ Arsitektur Offline-First**: Data disimpan di lokal menggunakan SQLite untuk akses secepat kilat tanpa ketergantungan internet.
+* **🔄 Sinkronisasi Cerdas**: 
+    * *Push Master*: Setor data santri ke Cloud dengan mekanisme *Conflict Resolution* (Upsert).
+    * *Push Attendance*: Sinkronisasi log absensi offline ke server pusat.
+    * *Pull Master*: Tarik data terbaru dari Cloud ke perangkat lokal.
+* **💎 UI Glassmorphism**: Antarmuka modern, transparan, dan premium yang memberikan pengalaman pengguna kelas atas.
+* **🖼️ Profil & Logo Sync**: Integrasi Supabase Storage untuk manajemen aset digital sekolah secara terpusat.
+* **🚨 Custom Animated Alerts**: Sistem notifikasi interaktif menggunakan Lottie Animations untuk feedback yang lebih manusiawi.
 
-   ```bash
-   npx expo start
-   ```
+---
 
-In the output, you'll find options to open the app in a
+## 🛠️ Tech Stack
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+| Komponen | Teknologi |
+| :--- | :--- |
+| **Frontend** | React Native (Expo) |
+| **Local Database** | `expo-sqlite` |
+| **Cloud Database** | Supabase (Postgres) |
+| **Aset Cloud** | Supabase Storage |
+| **Animasi** | Lottie Files |
+| **Ikon** | Lucide React Native |
+| **Penyimpanan** | AsyncStorage (App Config) |
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+---
 
-## Get a fresh project
+## 📂 Struktur Proyek
 
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-### Other setup steps
-
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```text
+├── src/
+│   ├── components/       # Komponen UI Reusable (CustomAlert, GlassmorphicBox)
+│   ├── database/         # Konfigurasi SQLite & Supabase Client
+│   ├── services/         # SyncService.js (Logika Sinkronisasi Cloud-Lokal)
+│   ├── screens/          # Layanan Utama (Dashboard, Siswa, Pengaturan)
+│   ├── theme/            # Global Colors & Desain Konsisten
+│   └── assets/           # Lottie Animations & Gambar

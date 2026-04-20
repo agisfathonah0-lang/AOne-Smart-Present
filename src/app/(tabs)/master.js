@@ -95,6 +95,7 @@ const [alertConfig, setAlertConfig] = useState({
   };
 
 const handleDelete = (nis, name) => {
+  console.log("Lokasi Database:", FileSystem.documentDirectory + 'AOneSmartPresent_v7.db');
   setAlertConfig({
     visible: true,
     title: "Hapus Data",
@@ -140,7 +141,7 @@ const handleDelete = (nis, name) => {
     const cardsHtml = filteredStudents.map(s => `
     <div class="card">
       <div class="header">
-        <div class="brand">YAYASAN MUHAMMAD AL MUMTAZ</div>
+        <div class="brand">PONPES MIFTAHUL ULUM SAROLANGUN</div>
         <div class="tagline">AOne Smart Present • Student Card</div>
       </div>
       <div class="body">
@@ -345,7 +346,7 @@ const handleDelete = (nis, name) => {
         <Plus color={Theme.background} size={28} />
       </TouchableOpacity>
 
-      {/* MODAL TAMBAH (Sama seperti sebelumnya namun disesuaikan desainnya) */}
+      {/* MODAL TAMBAH  */}
       <Modal visible={isModalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <GlassmorphicBox style={styles.modalContent} intensity={40}>
@@ -392,7 +393,7 @@ const handleDelete = (nis, name) => {
               <GlassmorphicBox intensity={60} style={styles.idCard}>
                 <View style={styles.idCardHeader}>
                   <View style={styles.logoCircle}><Text style={{ fontSize: 8, fontWeight: 'bold', color: Theme.primary }}>AOne</Text></View>
-                  <Text style={styles.cardBrand}>YAYASAN MUHAMMAD AL MUMTAZ</Text>
+                  <Text style={styles.cardBrand}>PONPES MIFTAHUL ULUM</Text>
                 </View>
                 <View style={styles.idCardBody}>
                   <View style={{ flex: 1 }}>
@@ -444,7 +445,7 @@ const styles = StyleSheet.create({
   tableRow: { flexDirection: 'row', paddingHorizontal: 25, paddingVertical: 15, borderBottomWidth: 0.5, borderBottomColor: 'rgba(255,255,255,0.05)', alignItems: 'center' },
   cell: { color: '#EEE', fontSize: 13 },
 
-  fab: { position: 'absolute', bottom: 70, right: 25, width: 60, height: 60, borderRadius: 30, backgroundColor: Theme.primary, justifyContent: 'center', alignItems: 'center', elevation: 10 },
+  fab: { position: 'absolute', bottom: 741, right: 25, width: 43, height: 43, borderRadius: 30, backgroundColor: Theme.primary, justifyContent: 'center', alignItems: 'center', elevation: 10 },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', padding: 25 },
   modalContent: { padding: 25, borderRadius: 25 },

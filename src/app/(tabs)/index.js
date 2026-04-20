@@ -1,14 +1,16 @@
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { Bell, TrendingUp, UserCheck, UserMinus, UserPlus, Users, Zap } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { Dimensions, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Dimensions, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LineChart } from 'react-native-chart-kit'; // Pastikan sudah instal ini
 import Card from '../../components/Card';
 import GlassmorphicBox from '../../components/GlassmorphicBox';
 import SyncIndicator from '../../components/SyncIndicator';
 import { LocalDB } from '../../database/sqlite';
 import { AIInsightService } from '../../services/aiInsight';
+import { useCheckConnection } from '../../services/useCheckConnection';
 import { Theme, hexToRGBA } from '../../theme/colors';
-
 const screenWidth = Dimensions.get("window").width;
 
 export default function DashboardScreen() {
@@ -18,11 +20,15 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
 // 1. Variabel untuk Nama Sekolah (Defaultnya "Memuat...")
   const [schoolInfo, setSchoolInfo] = useState({ name: 'Memuat...' });
+  const [userInfo, setUserInfo] = useState({ name: 'Memuat...' });
+  const isOnline = useCheckConnection(); // Cek status koneksi setiap load data
   // 1. Load Semua Data (Statistik, Grafik, & AI)
   const loadDashboardData = async () => {
     try {
       const profile = await LocalDB.getSchoolProfile();
       setSchoolInfo({ name: profile.school_name });
+      const userName = await LocalDB.getStaff();
+      setUserInfo({ name: userName.username || 'Administrator' });
       // Ambil data harian untuk box statistik
       const dailyData = await LocalDB.getDailyStats();
       const newStats = { hadir: 0, izin: 0, alfa: 0 };
@@ -31,31 +37,89 @@ export default function DashboardScreen() {
         if (newStats.hasOwnProperty(status)) newStats[status] = item.total;
       });
       setStats(newStats);
-
+      
       // Ambil data mingguan untuk grafik
       const weeklyStats = await LocalDB.getWeeklyAttendance(); // Buat fungsi ini di sqlite.js
       if (weeklyStats) setChartData(weeklyStats);
-
+      
       // Ambil Insight AI
       const insights = await AIInsightService.getAtRiskStudents();
       if (insights.length > 0) setAiInsight(insights[0]);
+      
       
     } catch (error) {
       console.error("Dashboard Load Error:", error);
     }
   };
 
+
+const handleBackupDB = async () => {
+  const docDir = FileSystem.documentDirectory;
+  const dbName = 'AOneSmartPresent_v7.db';
+  
+  const pathUtama = `${docDir}${dbName}`;
+  const pathAlternatif = `${docDir}SQLite/${dbName}`;
+
+  try {
+    // 1. Cari lokasi file DB yang valid
+    const infoUtama = await FileSystem.getInfoAsync(pathUtama);
+    const infoAlt = await FileSystem.getInfoAsync(pathAlternatif);
+    let finalUri = infoUtama.exists ? pathUtama : (infoAlt.exists ? pathAlternatif : "");
+
+    if (finalUri === "") {
+      const files = await FileSystem.readDirectoryAsync(docDir);
+      console.log("File tersedia:", files);
+      Alert.alert("Error", "File database tidak ditemukan!");
+      return;
+    }
+
+    // 2. Minta izin akses folder Downloads (atau folder lain pilihan user)
+    const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+
+    if (permissions.granted) {
+      // 3. Baca data DB asli
+      const base64Data = await FileSystem.readAsStringAsync(finalUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // 4. Buat file baru di folder tujuan
+      const destinationUri = await FileSystem.StorageAccessFramework.createFileAsync(
+        permissions.directoryUri,
+        dbName,
+        'application/x-sqlite3'
+      );
+
+      // 5. Tulis datanya
+      await FileSystem.writeAsStringAsync(destinationUri, base64Data, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      Alert.alert("Berhasil!", "Database telah disimpan ke folder Downloads.");
+      
+      // OPTIONAL: Tetap buka menu Sharing jika kamu ingin mengirimnya juga ke WA
+      // await Sharing.shareAsync(finalUri);
+
+    } else {
+      // Jika user membatalkan pilih folder, tawarkan Sharing sebagai cadangan
+      await Sharing.shareAsync(finalUri);
+    }
+  } catch (error) {
+    console.error(error);
+    Alert.alert("Gagal", "Terjadi kesalahan saat membackup data.");
+  }
+};
   // 2. Auto Refresh setiap 30 detik
   useEffect(() => {
+    
     loadDashboardData();
-    const interval = setInterval(loadDashboardData, 30000);
+    const interval = setInterval(loadDashboardData, 3000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isOnline]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     loadDashboardData().then(() => setRefreshing(false));
-  }, []);
+  }, [isOnline]);
 
   return (
     <ScrollView 
@@ -68,8 +132,8 @@ export default function DashboardScreen() {
       {/* HEADER SECTION */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.welcomeText}>Halo, Administrator</Text>
-          <Text style={styles.schoolName}>{schoolInfo?.name || "Memuat..."}</Text>
+          <Text style={styles.welcomeText}>Hallo, {userInfo.name} 🖐️🖐️</Text>
+          <Text style={styles.schoolName}>{schoolInfo.name || "Memuat..."}</Text>
         </View>
         <TouchableOpacity style={styles.notifBtn}>
           <Bell color={Theme.textMain} size={22} />
@@ -79,7 +143,7 @@ export default function DashboardScreen() {
 
       {/* SYNC STATUS */}
       <View style={styles.syncWrapper}>
-        <SyncIndicator isOnline={true} unsyncedCount={3} />
+        <SyncIndicator isOnline={isOnline} unsyncedCount={3} />
       </View>
 
       {/* MAIN STATS (GLASSMORPHIC) */}
@@ -99,7 +163,7 @@ export default function DashboardScreen() {
           
           <View style={[styles.miniStat, { backgroundColor: hexToRGBA(Theme.danger, 0.15) }]}>
             <UserMinus color={Theme.danger} size={20} />
-            <Text style={[styles.miniStatNumber, { color: Theme.danger }]}>{stats.alfa}</Text>
+            <Text style={[styles.miniStatNuber, { color: Theme.danger }]}>{stats.alfa}</Text>
             <Text style={styles.miniStatLabel}>Alfa</Text>
           </View>
         </View>
@@ -158,7 +222,7 @@ export default function DashboardScreen() {
           <Text style={styles.actionText}>Data Siswa</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.actionItem} onPress={() => {/* Navigasi Backup */}}>
+        <TouchableOpacity style={styles.actionItem} onPress={handleBackupDB}>
           <View style={[styles.actionIcon, { backgroundColor: Theme.success }]}>
             <Zap color={Theme.background} size={24} />
           </View>
