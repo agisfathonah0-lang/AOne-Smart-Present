@@ -445,7 +445,7 @@ const styles = StyleSheet.create({
   tableRow: { flexDirection: 'row', paddingHorizontal: 25, paddingVertical: 15, borderBottomWidth: 0.5, borderBottomColor: 'rgba(255,255,255,0.05)', alignItems: 'center' },
   cell: { color: '#EEE', fontSize: 13 },
 
-  fab: { position: 'absolute', bottom: 741, right: 25, width: 43, height: 43, borderRadius: 30, backgroundColor: Theme.primary, justifyContent: 'center', alignItems: 'center', elevation: 10 },
+  fab: { position: 'absolute', bottom: 130, right: 25, width: 50, height: 50, borderRadius: 30, backgroundColor: Theme.primary, justifyContent: 'center', alignItems: 'center', elevation: 10 },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', padding: 25 },
   modalContent: { padding: 25, borderRadius: 25 },

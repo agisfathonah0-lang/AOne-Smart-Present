@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
+import { useRouter } from 'expo-router';
 import LottieView from 'lottie-react-native';
 import {
   BellRing,
@@ -26,7 +27,6 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-
 // Import internal
 import Card from '../../components/Card';
 import GlassmorphicBox from '../../components/GlassmorphicBox';
@@ -36,6 +36,7 @@ import { SyncService } from '../../services/syncService';
 import { Theme, hexToRGBA } from '../../theme/colors';
 
 export default function SettingsScreen({ navigation }) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState('profile'); // 'profile' atau 'system'
   const [loadingType, setLoadingType] = useState(null);
   const [lastSync, setLastSync] = useState('Belum pernah');
@@ -185,27 +186,143 @@ export default function SettingsScreen({ navigation }) {
     if (syncTime) setLastSync(syncTime);
   };
 
-  const updateSetting = async (key, value) => {
+  const handleLogout = async () => {
     try {
-      // 1. MAPPING NAMA KOLOM (Sangat Penting!)
-      // Jika key dari UI adalah 'holiday_mode', ubah menjadi 'is_holiday_mode' agar cocok dengan SQLite
-      const dbCol = (key === 'holiday_mode') ? 'is_holiday_mode' : key;
+      console.log('🚪 Logout (clear session table)...');
 
-      // 2. Update UI & Storage
-      const newSettings = { ...settings, [key]: value };
-      setSettings(newSettings);
-      await AsyncStorage.setItem('@app_settings', JSON.stringify(newSettings));
+      await db.runAsync(`DELETE FROM user_session`);
 
-      // 3. UPDATE SQLITE (Penyebab Error Anda di sini)
-      // Pastikan menggunakan dbCol yang sudah di-mapping
-      const dbValue = typeof value === 'boolean' ? (value ? 1 : 0) : (value ?? "");
+      console.log('🧹 Semua data session terhapus');
+
+      // redirect ke login
+      router.replace('/LoginScreen');
+
+    } catch (err) {
+      console.error('❌ Logout Error:', err.message);
+    }
+  };
+  const updateSetting = async (key, value) => {
+    console.log('\n=== UPDATE SETTING ===');
+    console.log('KEY:', key);
+    console.log('VALUE:', value);
+
+    try {
+      // =========================
+      // 1. HOLIDAY MODE
+      // =========================
+      if (key === 'holiday_mode') {
+        const dbValue = value ? 1 : 0;
+
+        await db.runAsync(
+          `UPDATE school_settings SET is_holiday_mode = ? WHERE id = 1`,
+          [dbValue]
+        );
+
+        const { error } = await supabase
+          .from('school_profile')
+          .upsert({
+            id: 1,
+            is_holiday_mode: value,
+            last_updated: new Date().toISOString()
+          });
+
+        if (error) console.log('❌ Supabase:', error.message);
+
+        const newSettings = { ...settings, holiday_mode: value };
+        setSettings(newSettings);
+        await AsyncStorage.setItem('@app_settings', JSON.stringify(newSettings));
+
+        console.log('✅ HOLIDAY UPDATED');
+        return;
+      }
+
+      // =========================
+      // 2. CHECKIN TIME (START + END)
+      // =========================
+    } catch (e) {
+      console.log('❌ UPDATE SETTING ERROR:', e.message);
+    }
+  };
+
+  const handleSubmitTime = async (key) => {
+    const value = settings[key];
+    const isValidTime = (time) => {
+      return /^([01]\d|2[0-3]):([0-5]\d)$/.test(time);
+    };
+    console.log('\n=== SUBMIT TIME ===');
+    console.log('KEY:', key);
+    console.log('VALUE:', value);
+
+    // ✅ Validasi dulu
+    if (!isValidTime(value)) {
+      Alert.alert('Format salah', 'Gunakan HH:MM');
+      return;
+    }
+
+    try {
+      // =========================
+      // 1. CHECKIN
+      // =========================
+      if (key === 'checkin_time_start') {
+        const startTime = value;
+        const endTime = value; // sementara sama
+
+        console.log('➡️ MODE: CHECKIN');
+
+        await db.runAsync(
+          `UPDATE school_settings 
+         SET time_in_start = ?, time_in_end = ?
+         WHERE id = 1`,
+          [startTime, endTime]
+        );
+
+        const { error } = await supabase
+          .from('school_profile')
+          .upsert({
+            id: 1,
+            time_in_start: startTime,
+            time_in_end: endTime,
+            last_updated: new Date().toISOString()
+          });
+
+        if (error) console.log('❌ Supabase:', error.message);
+
+        const newSettings = {
+          ...settings,
+          checkin_time: startTime,
+          checkin_time_end: endTime
+        };
+
+        setSettings(newSettings);
+        await AsyncStorage.setItem('@app_settings', JSON.stringify(newSettings));
+
+        console.log('✅ CHECKIN UPDATED');
+        return;
+      }
+
+      // =========================
+      // 2. GENERAL
+      // =========================
+      const columnMap = {
+        checkin_time_end: 'time_in_end',
+        checkout_time_start: 'time_out_start'
+      };
+
+      const dbCol = columnMap[key];
+
+      console.log('➡️ MODE: GENERAL');
+      console.log('DB COL:', dbCol);
+
+      if (!dbCol) {
+        console.warn('❌ Key tidak dikenali:', key);
+        return;
+      }
 
       await db.runAsync(
         `UPDATE school_settings SET ${dbCol} = ? WHERE id = 1`,
-        [dbValue]
+        [value]
       );
 
-      // 4. UPDATE SUPABASE
       const { error } = await supabase
         .from('school_profile')
         .upsert({
@@ -214,14 +331,19 @@ export default function SettingsScreen({ navigation }) {
           last_updated: new Date().toISOString()
         });
 
-      if (error) console.log("Supabase Sync Error:", error.message);
-      else console.log("✅ Berhasil Sinkron Lokal & Cloud");
+      if (error) console.log('❌ Supabase:', error.message);
+
+      const newSettings = { ...settings, [key]: value };
+
+      setSettings(newSettings);
+      await AsyncStorage.setItem('@app_settings', JSON.stringify(newSettings));
+
+      console.log('✅ GENERAL UPDATED');
 
     } catch (e) {
-      console.error("Update Error:", e.message);
+      console.error('❌ Update Error:', e.message);
     }
   };
-
   const handlePickLogo = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
@@ -306,10 +428,16 @@ export default function SettingsScreen({ navigation }) {
                 </View>
                 <TextInput
                   style={styles.timeInput}
-                  value={settings.checkin_time}
-                  onChangeText={(v) => updateSetting('checkin_time', v)}
-                  keyboardType="numbers-and-punctuation"
+
+                  value={settings.checkin_time_start}
+                  onChangeText={(v) =>
+                    setSettings(prev => ({ ...prev, checkin_time_start: v }))
+                  }
+                  keyboardType="numeric"
+                  returnKeyType="done"
+                  onSubmitEditing={() => handleSubmitTime('checkin_time_start')}
                 />
+
               </View>
               <View style={styles.divider} />
               <View style={styles.settingItem}>
@@ -319,9 +447,16 @@ export default function SettingsScreen({ navigation }) {
                 </View>
                 <TextInput
                   style={styles.timeInput}
-                  value={settings.checkout_time}
-                  onChangeText={(v) => updateSetting('checkout_time', v)}
-                  keyboardType="numbers-and-punctuation"
+                  value={settings.checkout_time_start}
+                  onChangeText={(v) =>
+                    setSettings(prev => ({ ...prev, checkout_time_start: v }))
+                  }
+                  keyboardType="numeric"
+                  returnKeyType="done"
+                  blurOnSubmit={true}
+                  onSubmitEditing={() =>
+                    handleSubmitTime('checkout_time_start')
+                  }
                 />
               </View>
             </Card>
@@ -418,7 +553,7 @@ export default function SettingsScreen({ navigation }) {
           </View>
         )}
 
-        <TouchableOpacity style={styles.logoutBtn} onPress={() => navigation.replace('Login')}>
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
           <LogOut color={Theme.danger} size={20} />
           <Text style={styles.logoutText}>Keluar Akun</Text>
         </TouchableOpacity>

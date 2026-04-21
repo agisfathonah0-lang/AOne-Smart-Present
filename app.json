@@ -9,10 +9,13 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.aone.smartpresent"
+      "bundleIdentifier": "com.aone.smartpresent",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
-      "package": "com.aone.smartpresent", 
+      "package": "com.aone.smartpresent",
       "newArchEnabled": false,
       "adaptiveIcon": {
         "backgroundColor": "#0f172a",
