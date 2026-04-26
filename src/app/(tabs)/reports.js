@@ -35,6 +35,56 @@ export default function ReportsScreen() {
   ];
 
   // Fungsi Ambil Data dengan Optimasi SQL
+  // const fetchData = async (silent = false) => {
+  //   if (!silent) setLoading(true);
+  //   try {
+  //     const classRes = await db.getAllAsync("SELECT DISTINCT class FROM students WHERE class IS NOT NULL ORDER BY class ASC");
+  //     setClasses(['Semua Kelas', ...classRes.map(c => c.class)]);
+
+  //     let query = "";
+  //     if (activeTab === 'logs') {
+  //       query = `
+  //         SELECT 
+  //           IFNULL(s.name, 'Siswa Tidak Terdaftar') as name, 
+  //           IFNULL(s.nisn, '-') as nisn,
+  //           IFNULL(s.class, '-') as class, a.nis,
+  //           date(a.timestamp, 'localtime') as date_only,
+  //           MAX(CASE WHEN a.session = 'masuk' THEN time(a.timestamp, 'localtime') END) as jam_masuk,
+  //           MAX(CASE WHEN a.session = 'pulang' THEN time(a.timestamp, 'localtime') END) as jam_pulang
+  //         FROM attendance_logs a 
+  //         LEFT JOIN students s ON TRIM(CAST(a.nis AS TEXT)) = TRIM(CAST(s.nis AS TEXT))
+  //         WHERE 1=1
+  //       `;
+  //     } else {
+  //       query = `
+  //         SELECT s.name, s.nis, s.nisn, s.class,
+  //         COUNT(DISTINCT date(a.timestamp, 'localtime')) as total_hadir
+  //         FROM students s
+  //         LEFT JOIN attendance_logs a ON TRIM(CAST(s.nis AS TEXT)) = TRIM(CAST(a.nis AS TEXT))
+  //         WHERE 1=1
+  //       `;
+  //     }
+
+  //     if (filterDate.year !== 'Semua') query += ` AND strftime('%Y', a.timestamp, 'localtime') = '${filterDate.year}'`;
+  //     if (filterDate.month !== 'Semua') query += ` AND strftime('%m', a.timestamp, 'localtime') = '${filterDate.month}'`;
+  //     if (filterDate.day !== 'Semua') query += ` AND strftime('%d', a.timestamp, 'localtime') = '${filterDate.day.padStart(2, '0')}'`;
+  //     if (selectedClass !== 'Semua Kelas') query += ` AND s.class = '${selectedClass}'`;
+  //     if (searchText) query += ` AND (s.name LIKE '%${searchText}%' OR s.nis LIKE '%${searchText}%')`;
+
+  //     if (activeTab === 'logs') {
+  //       query += ` GROUP BY a.nis, date_only ORDER BY date_only DESC, jam_masuk DESC LIMIT ${limit}`;
+  //     } else {
+  //       query += ` GROUP BY s.nis ORDER BY s.class ASC, s.name ASC LIMIT ${limit}`;
+  //     }
+
+  //     const results = await db.getAllAsync(query);
+  //     setData(results || []);
+  //   } catch (error) {
+  //     console.error("Fetch Error:", error);
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
   const fetchData = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
@@ -44,27 +94,33 @@ export default function ReportsScreen() {
       let query = "";
       if (activeTab === 'logs') {
         query = `
-          SELECT 
-            IFNULL(s.name, 'Siswa Tidak Terdaftar') as name, 
-            IFNULL(s.nisn, '-') as nisn,
-            IFNULL(s.class, '-') as class, a.nis,
-            date(a.timestamp, 'localtime') as date_only,
-            MAX(CASE WHEN a.session = 'masuk' THEN time(a.timestamp, 'localtime') END) as jam_masuk,
-            MAX(CASE WHEN a.session = 'pulang' THEN time(a.timestamp, 'localtime') END) as jam_pulang
-          FROM attendance_logs a 
-          LEFT JOIN students s ON TRIM(CAST(a.nis AS TEXT)) = TRIM(CAST(s.nis AS TEXT))
-          WHERE 1=1
-        `;
+        SELECT 
+          IFNULL(s.name, 'Siswa Tidak Terdaftar') as name, 
+          IFNULL(s.nisn, '-') as nisn,
+          IFNULL(s.class, '-') as class, a.nis,
+          date(a.timestamp, 'localtime') as date_only,
+          MAX(a.status) as status_display,
+          MAX(CASE WHEN a.session = 'masuk' THEN time(a.timestamp, 'localtime') END) as jam_masuk,
+          MAX(CASE WHEN a.session = 'pulang' THEN time(a.timestamp, 'localtime') END) as jam_pulang
+        FROM attendance_logs a 
+        LEFT JOIN students s ON TRIM(CAST(a.nis AS TEXT)) = TRIM(CAST(s.nis AS TEXT))
+        WHERE 1=1
+      `;
       } else {
         query = `
-          SELECT s.name, s.nis, s.nisn, s.class,
-          COUNT(DISTINCT date(a.timestamp, 'localtime')) as total_hadir
-          FROM students s
-          LEFT JOIN attendance_logs a ON TRIM(CAST(s.nis AS TEXT)) = TRIM(CAST(a.nis AS TEXT))
-          WHERE 1=1
-        `;
+        SELECT s.name, s.nis, s.nisn, s.class,
+          -- Gunakan UPPER untuk memastikan kecocokan huruf besar/kecil
+          COUNT(DISTINCT CASE WHEN UPPER(a.status) = 'HADIR' THEN date(a.timestamp, 'localtime') END) as total_hadir,
+          COUNT(DISTINCT CASE WHEN UPPER(a.status) = 'IZIN' THEN date(a.timestamp, 'localtime') END) as total_izin,
+          COUNT(DISTINCT CASE WHEN UPPER(a.status) = 'SAKIT' THEN date(a.timestamp, 'localtime') END) as total_sakit,
+          COUNT(DISTINCT CASE WHEN UPPER(a.status) = 'ALFA' THEN date(a.timestamp, 'localtime') END) as total_alfa
+        FROM students s
+        LEFT JOIN attendance_logs a ON TRIM(CAST(s.nis AS TEXT)) = TRIM(CAST(a.nis AS TEXT))
+        WHERE 1=1
+      `;
       }
 
+      // Filter Tanggal & Search
       if (filterDate.year !== 'Semua') query += ` AND strftime('%Y', a.timestamp, 'localtime') = '${filterDate.year}'`;
       if (filterDate.month !== 'Semua') query += ` AND strftime('%m', a.timestamp, 'localtime') = '${filterDate.month}'`;
       if (filterDate.day !== 'Semua') query += ` AND strftime('%d', a.timestamp, 'localtime') = '${filterDate.day.padStart(2, '0')}'`;
@@ -96,64 +152,219 @@ export default function ReportsScreen() {
   );
 
   const exportPDF = async () => {
-    if (data.length === 0) return Alert.alert("Kosong", "Tidak ada data.");
+    if (data.length === 0) return Alert.alert("Kosong", "Tidak ada data untuk diekspor.");
+
+    const tanggalCetak = new Date().toLocaleDateString('id-ID', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+
+    // 1. Header Tabel Dinamis
     let tableHeader = activeTab === 'logs'
-      ? `<tr><th>No</th><th>Tanggal</th><th>NIS</th><th>Nama</th><th>Kelas</th><th>Masuk</th><th>Pulang</th></tr>`
-      : `<tr><th>No</th><th>NIS</th><th>Nama</th><th>Kelas</th><th>Total Hadir</th></tr>`;
+      ? `<tr>
+        <th>No</th>
+        <th>Tanggal</th>
+        <th>Nama Santri</th>
+        <th>Kelas</th>
+        <th>Status</th>
+        <th>Masuk</th>
+        <th>Pulang</th>
+      </tr>`
+      : `<tr>
+        <th>No</th>
+        <th>NIS</th>
+        <th>Nama Santri</th>
+        <th>Kelas</th>
+        <th style="background-color: #e8f5e9;">H</th>
+        <th style="background-color: #fff3e0;">I</th>
+        <th style="background-color: #e0f7fa;">S</th>
+        <th style="background-color: #ffeeb3;">A</th>
+      </tr>`;
 
-    let tableRows = data.map((item, index) => activeTab === 'logs'
-      ? `<tr><td>${index + 1}</td><td>${item.date_only}</td><td>${item.nis}</td><td>${item.name}</td><td>${item.class}</td><td>${item.jam_masuk || '-'}</td><td>${item.jam_pulang || '-'}</td></tr>`
-      : `<tr><td>${index + 1}</td><td>${item.nis}</td><td>${item.name}</td><td>${item.class}</td><td align="center">${item.total_hadir} Hari</td></tr>`
-    ).join('');
+    // 2. Baris Tabel Dinamis
+    let tableRows = data.map((item, index) => {
+      if (activeTab === 'logs') {
+        const status = item.status_display?.toUpperCase() || 'HADIR';
+        return `<tr>
+        <td align="center">${index + 1}</td>
+        <td>${item.date_only}</td>
+        <td><b>${item.name}</b></td>
+        <td align="center">${item.class}</td>
+        <td align="center">${status}</td>
+        <td align="center">${item.jam_masuk?.substring(0, 5) || '-'}</td>
+        <td align="center">${item.jam_pulang?.substring(0, 5) || '-'}</td>
+      </tr>`;
+      } else {
+        return `<tr>
+        <td align="center">${index + 1}</td>
+        <td>${item.nis}</td>
+        <td><b>${item.name}</b></td>
+        <td align="center">${item.class}</td>
+        <td align="center">${item.total_hadir || 0}</td>
+        <td align="center">${item.total_izin || 0}</td>
+        <td align="center">${item.total_sakit || 0}</td>
+        <td align="center">${item.total_alfa || 0}</td>
+      </tr>`;
+      }
+    }).join('');
 
-    const html = `<html><head><style>table{width:100%;border-collapse:collapse;} th,td{border:1px solid #999;padding:8px;font-size:10px;}</style></head>
-      <body><h2 align="center">LAPORAN ABSENSI</h2><p align="center">Periode: ${filterDate.month}/${filterDate.year}</p><table>${tableHeader}${tableRows}</table></body></html>`;
-    const { uri } = await Print.printToFileAsync({ html });
-    await Sharing.shareAsync(uri);
+    // 3. Template HTML Lengkap (Kop Surat & Style)
+    const html = `
+    <html>
+      <head>
+        <style>
+          body { font-family: 'Helvetica', sans-serif; padding: 20px; color: #333; }
+          .kop-surat { border-bottom: 3px double #000; padding-bottom: 10px; margin-bottom: 20px; text-align: center; }
+          .nama-yayasan { font-size: 20px; font-weight: bold; margin: 0; text-transform: uppercase; }
+          .nama-pesantren { font-size: 16px; font-weight: bold; margin: 5px 0; color: #2e7d32; }
+          .alamat { font-size: 10px; font-style: italic; margin: 0; }
+          
+          .judul-laporan { text-align: center; font-size: 14px; font-weight: bold; margin-top: 20px; text-decoration: underline; }
+          .info-periode { text-align: center; font-size: 11px; margin-bottom: 20px; }
+          
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+          th { border: 1px solid #000; padding: 8px; font-size: 10px; background-color: #f2f2f2; text-transform: uppercase; }
+          td { border: 1px solid #000; padding: 6px; font-size: 10px; }
+          
+          .footer { margin-top: 40px; }
+          .ttd-box { float: right; width: 200px; text-align: center; font-size: 12px; }
+          .app-brand { clear: both; margin-top: 80px; border-top: 1px solid #ddd; padding-top: 5px; font-size: 9px; color: #999; font-style: italic; }
+        </style>
+      </head>
+      <body>
+        <div class="kop-surat">
+          <p class="nama-yayasan">المعهد مفتاح العلوم</p>
+          <p class="nama-pesantren">PONDOK PESANTREN MIFTAHUL ULUM SAROLANGUN</p>
+          <p class="alamat">Jln.Jati desa Sei Merah, Pelawan, Sarolangun Jambi. Kode Pos: 37481</p>
+        </div>
+
+        <div class="judul-laporan">
+          ${activeTab === 'logs' ? 'LAPORAN RIWAYAT ABSENSI HARIAN' : 'LAPORAN REKAPITULASI ABSENSI SANTRI'}
+        </div>
+        <div class="info-periode">
+          Periode: ${filterDate.month} / ${filterDate.year} | Kelas: ${selectedClass}
+        </div>
+
+        <table>
+          <thead>${tableHeader}</thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+
+        <div class="footer">
+          <div class="ttd-box">
+            <p>Sarolangun, ${tanggalCetak.split(',')[1]}</p>
+            <p style="margin-top: 60px;"><b>Admin Kesantrian</b></p>
+            <p>( .................................... )</p>
+          </div>
+        </div>
+
+        <div class="app-brand">
+          Dokumen ini dibuat otomatis oleh <b>AOne Smart Present</b> pada ${tanggalCetak}
+        </div>
+      </body>
+    </html>
+  `;
+
+    try {
+      const { uri } = await Print.printToFileAsync({ html });
+      await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+    } catch (err) {
+      Alert.alert("Error", "Gagal mencetak PDF.");
+    }
   };
 
-  const renderItem = ({ item }) => (
-    <Card style={styles.logCard}>
-      <View style={styles.logRow}>
-        {/* 1. KIRI: Indikator */}
-        <View style={[styles.statusIndicator, { backgroundColor: activeTab === 'logs' ? (item.jam_pulang ? Theme.success : Theme.primary) : Theme.secondary }]} />
+  const renderItem = ({ item }) => {
+    // 1. Definisikan Status secara Case-Insensitive
+    const status = item.status_display?.toUpperCase();
+    const isIzin = status === 'IZIN';
+    const isSakit = status === 'SAKIT';
+    const isAlfa = status === 'ALFA';
 
-        {/* 2. TENGAH: Nama (KUNCI UTAMA) */}
-        <View style={styles.logInfo}>
-          <Text style={styles.studentName} numberOfLines={1}>
-            {String(item.name || "Nama Kosong")}
-          </Text>
-          <Text style={styles.subInfo} numberOfLines={1}>
-            {item.nis} • {item.class}
-          </Text>
-          {activeTab === 'logs' && (
-            <Text style={styles.dateInfo}>{item.date_only}</Text>
-          )}
-        </View>
+    // 2. Tentukan Warna Tema Berdasarkan Status
+    const getStatusColor = () => {
+      if (isIzin) return '#FF9500'; // Orange
+      if (isSakit) return '#00C7BE'; // Teal/Tosca
+      if (isAlfa) return '#FF3B30';  // Merah
+      return null;
+    };
 
-        {/* 3. KANAN: Jam/Rekap */}
-        <View style={styles.rightSection}>
-          {activeTab === 'logs' ? (
-            <View style={styles.timeContainer}>
-              <View style={styles.timeBox}>
-                <Text style={styles.timeLabel}>MASUK</Text>
-                <Text style={styles.timeValue}>{item.jam_masuk?.substring(0, 5) || '--:--'}</Text>
+    const statusColor = getStatusColor();
+
+    return (
+      <Card style={styles.logCard}>
+        <View style={styles.logRow}>
+          {/* 1. KIRI: Indikator Warna */}
+          <View style={[
+            styles.statusIndicator,
+            {
+              backgroundColor: statusColor
+                ? statusColor
+                : activeTab === 'logs'
+                  ? (item.jam_pulang ? Theme.success : Theme.primary)
+                  : Theme.secondary
+            }
+          ]} />
+
+          {/* 2. TENGAH: Info Siswa */}
+          <View style={styles.logInfo}>
+            <Text style={styles.studentName} numberOfLines={1}>
+              {String(item.name || "Nama Kosong")}
+            </Text>
+            <Text style={styles.subInfo} numberOfLines={1}>
+              {item.nis} • {item.class}
+            </Text>
+            {activeTab === 'logs' && (
+              <Text style={styles.dateInfo}>
+                {item.date_only}
+                {statusColor && (
+                  <Text style={{ color: statusColor, fontWeight: 'bold' }}> • {status}</Text>
+                )}
+              </Text>
+            )}
+          </View>
+
+          {/* 3. KANAN: Detail Log atau Rekapitulasi */}
+          <View style={styles.rightSection}>
+            {activeTab === 'logs' ? (
+              <View style={styles.timeContainer}>
+                <View style={styles.timeBox}>
+                  <Text style={styles.timeLabel}>MASUK</Text>
+                  <Text style={[styles.timeValue, statusColor && { color: statusColor }]}>
+                    {statusColor ? status : (item.jam_masuk?.substring(0, 5) || '--:--')}
+                  </Text>
+                </View>
+                <View style={styles.timeBox}>
+                  <Text style={styles.timeLabel}>PULANG</Text>
+                  <Text style={[styles.timeValue, statusColor && { color: statusColor }]}>
+                    {statusColor ? status : (item.jam_pulang?.substring(0, 5) || '--:--')}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.timeBox}>
-                <Text style={styles.timeLabel}>PULANG</Text>
-                <Text style={styles.timeValue}>{item.jam_pulang?.substring(0, 5) || '--:--'}</Text>
+            ) : (
+              /* TAMPILAN REKAP: 4 Kolom (Hadir, Izin, Sakit, Alfa) */
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <View style={styles.rekapBox}>
+                  <Text style={styles.rekapValue}>{item.total_hadir || 0}</Text>
+                  <Text style={styles.rekapLabel}>H</Text>
+                </View>
+                <View style={styles.rekapBox}>
+                  <Text style={[styles.rekapValue, { color: '#FF9500' }]}>{item.total_izin || 0}</Text>
+                  <Text style={styles.rekapLabel}>I</Text>
+                </View>
+                <View style={styles.rekapBox}>
+                  <Text style={[styles.rekapValue, { color: '#00C7BE' }]}>{item.total_sakit || 0}</Text>
+                  <Text style={styles.rekapLabel}>S</Text>
+                </View>
+                <View style={styles.rekapBox}>
+                  <Text style={[styles.rekapValue, { color: '#FF3B30' }]}>{item.total_alfa || 0}</Text>
+                  <Text style={styles.rekapLabel}>A</Text>
+                </View>
               </View>
-            </View>
-          ) : (
-            <View style={styles.rekapBox}>
-              <Text style={styles.rekapValue}>{item.total_hadir}</Text>
-              <Text style={styles.rekapLabel}>Hadir</Text>
-            </View>
-          )}
+            )}
+          </View>
         </View>
-      </View>
-    </Card>
-  );
+      </Card>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -312,27 +523,66 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   logInfo: {
-    flex: 1, 
+    flex: 1, // Ini akan memastikan nama mengalah jika ruang sempit
     justifyContent: 'center',
-    paddingLeft: 15, // Jarak dari garis biru ke teks nama
+    paddingLeft: 12,
     paddingVertical: 10,
-    // Tambahkan ini untuk tes:
-    minWidth: 100, 
   },
+  // logInfo: {
+  //   flex: 1,
+  //   justifyContent: 'center',
+  //   paddingLeft: 15, // Jarak dari garis biru ke teks nama
+  //   paddingVertical: 10,
+  //   // Tambahkan ini untuk tes:
+  //   minWidth: 100,
+  // },
+  // rightSection: {
+  //   // Hilangkan marginLeft: 10 jika ada
+  //   paddingRight: 15,
+  //   alignItems: 'flex-end',
+  //   justifyContent: 'center',
+  // },
   rightSection: {
-    // Hilangkan marginLeft: 10 jika ada
-    paddingRight: 15,
+    paddingRight: 12,
     alignItems: 'flex-end',
     justifyContent: 'center',
+    // Memberikan batas minimal agar area kanan tetap konsisten
+    minWidth: 140,
+  },
+  rekapContainer: {
+    flexDirection: 'row',
+    gap: 4, // Jarak antar kotak sangat rapat
+    alignItems: 'center',
   },
   // Style lainnya (timeBox, rekapBox) tetap sama...
   timeContainer: { flexDirection: 'row', gap: 6, paddingRight: 15 },
   timeBox: { alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', padding: 6, borderRadius: 8, minWidth: 50 },
   timeLabel: { fontSize: 7, color: Theme.textMuted, fontWeight: 'bold' },
   timeValue: { fontSize: 11, color: Theme.textMain, fontWeight: 'bold' },
-  rekapBox: { marginRight: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: hexToRGBA(Theme.secondary, 0.1), padding: 10, borderRadius: 12, minWidth: 60 },
-  rekapValue: { color: Theme.secondary, fontSize: 20, fontWeight: '900' },
-  rekapLabel: { color: Theme.textMuted, fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase' },
+  // rekapBox: { marginRight: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: hexToRGBA(Theme.secondary, 0.1), padding: 10, borderRadius: 12, minWidth: 60 },
+  // rekapValue: { color: Theme.secondary, fontSize: 15, fontWeight: '900' },
+  rekapBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)', // Background tipis transparan
+    paddingVertical: 6,
+    width: 32, // Lebar kotak tetap dan kecil
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  rekapValue: {
+    fontSize: 13, // Ukuran angka proporsional
+    fontWeight: '900',
+    marginBottom: -2, // Merapatkan jarak angka ke label
+  },
+  rekapLabel: {
+    color: Theme.textMuted,
+    fontSize: 8, // Inisial (H, I, S, A) kecil saja
+    fontWeight: 'bold',
+    textTransform: 'uppercase'
+  },
+  // rekapLabel: { color: Theme.textMuted, fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase' },
   loadMoreBtn: { padding: 15, alignItems: 'center', marginTop: 10 },
   loadMoreText: { color: Theme.primary, fontWeight: 'bold' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },

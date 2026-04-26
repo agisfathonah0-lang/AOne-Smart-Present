@@ -1,10 +1,51 @@
+import * as Notifications from 'expo-notifications'; // Tambahkan ini
 import { db } from '../database/sqlite';
 import { supabase } from '../database/supabase';
 
 export const AuthService = {
-  // Tambahkan parameter onLog di sini
+  // Fungsi baru untuk ambil & simpan token
+  updatePushToken: async (userId, log) => {
+    try {
+      log("Mengambil Expo Push Token...");
+      
+      // Ambil izin notifikasi
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      
+      if (finalStatus !== 'granted') {
+        log("Izin notifikasi ditolak oleh user.");
+        return;
+      }
+
+      // Ambil token dari Expo
+      const token = (await Notifications.getExpoPushTokenAsync({
+        // Ganti dengan Project ID Expo kamu (cek di app.json -> extra.eas.projectId)
+        projectId: 'cf8436d8-c49a-461a-9470-6ec0043c10d9' 
+      })).data;
+
+      log("Token didapat. Menyimpan ke profil server...");
+
+      // Update tabel 'profiles' di Supabase
+      const { error } = await supabase
+        .from('profiles')
+        .upsert({ 
+          id: userId, 
+          expo_push_token: token,
+          last_online: new Date().toISOString()
+        });
+
+      if (error) throw error;
+      log("Push Token berhasil sinkron ke server.");
+    } catch (err) {
+      log("Gagal sinkron token: " + err.message);
+    }
+  },
+
   login: async (username, password, onLog) => {
-    // Fungsi pembantu agar tidak perlu cek if(onLog) berulang kali
     const log = (msg) => {
       console.log(msg);
       if (onLog) onLog(msg);
@@ -22,11 +63,13 @@ export const AuthService = {
 
       if (localUser) {
         log("User ditemukan di lokal. Membuat sesi...");
+        // Jika login lokal, kita asumsikan token sudah pernah dikirim sebelumnya
+        // atau kamu bisa panggil updatePushToken di sini juga jika ada internet
         await db.runAsync(
           'INSERT OR REPLACE INTO user_session (id, email, last_login) VALUES (?, ?, ?)',
           [localUser.id, localUser.username, new Date().toISOString()]
         );
-        return { success: true, source: 'local' };
+        return { success: true, source: 'local', userId: localUser.id };
       }
 
       // 2. JIKA TIDAK ADA DI LOKAL -> CEK ONLINE
@@ -41,7 +84,6 @@ export const AuthService = {
         password: password,
       });
 
-      // Balapan antara login vs timeout
       const { data, error } = await Promise.race([supabaseLogin, timeout]);
 
       if (error) {
@@ -55,17 +97,15 @@ export const AuthService = {
       if (data.user) {
         log("User ditemukan di Server. Menyimpan data ke HP...");
 
-        // Simpan data staff ke SQLite (Pastikan ID juga disimpan agar sinkron)
-        // Saya tambahkan ID agar primary key TEXT yang kita buat tadi terisi
         await db.runAsync(
           'INSERT OR REPLACE INTO staff (username, password) VALUES ( ?, ?)',
-          [
-            data.user.email,
-            password
-          ]
+          [data.user.email, password]
         );
         
         log("Data berhasil disinkronkan ke lokal.");
+
+        // SIMPAN TOKEN KE SERVER (Tambahan Baru)
+        await AuthService.updatePushToken(data.user.id, log);
 
         // Simpan ke sesi aktif
         log("Membuat sesi aplikasi...");
@@ -80,8 +120,6 @@ export const AuthService = {
 
     } catch (error) {
       log("Proses terhenti: " + error.message);
-      // Alert tetap ada sebagai backup jika UI tidak menampilkan log dengan jelas
-      // Alert.alert('Info Login', error.message); 
       return { success: false, error: error.message };
     }
   },

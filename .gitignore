@@ -41,3 +41,7 @@ app-example
 # generated native folders
 /ios
 /android
+*.json
+!app.json
+!package.json
+aone-smart-present-4257d-firebase-adminsdk-fbsvc-4c13006394.json

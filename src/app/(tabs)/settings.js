@@ -1,9 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
+import { router } from 'expo-router';
 import LottieView from 'lottie-react-native';
 import {
   BellRing,
+  Check,
   ChevronRight,
   Clock,
   CloudDownload,
@@ -27,16 +28,20 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+
 // Import internal
+import Toast from 'react-native-toast-message';
 import Card from '../../components/Card';
+import CustomAlert from '../../components/CustomAlert';
 import GlassmorphicBox from '../../components/GlassmorphicBox';
 import db from '../../database/sqlite';
 import { supabase } from '../../database/supabase';
 import { SyncService } from '../../services/syncService';
 import { Theme, hexToRGBA } from '../../theme/colors';
 
+
+
 export default function SettingsScreen({ navigation }) {
-  const router = useRouter();
   const [activeTab, setActiveTab] = useState('profile'); // 'profile' atau 'system'
   const [loadingType, setLoadingType] = useState(null);
   const [lastSync, setLastSync] = useState('Belum pernah');
@@ -46,7 +51,8 @@ export default function SettingsScreen({ navigation }) {
   const [uploadVisible, setUploadVisible] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [stats, setStats] = useState({ local: 0, cloud: 0, unsynced: 0 });
-
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [successVisible, setSuccessVisible] = useState(false);
   const [settings, setSettings] = useState({
     school_name: 'Ponpes Miftahul Ulum',
     school_logo: null,
@@ -57,7 +63,18 @@ export default function SettingsScreen({ navigation }) {
 
   useEffect(() => {
     init();
-  }, []);
+    if (successVisible) {
+      // Alert akan hilang otomatis setelah 2.5 detik
+      const timer = setTimeout(() => {
+        setSuccessVisible(false);
+
+        // Opsi: Pindah halaman setelah alert hilang
+        // router.replace('/HomeScreen'); 
+      }, 2500);
+
+      return () => clearTimeout(timer); // Bersihkan timer jika komponen unmount
+    }
+  }, [successVisible]);
 
   const init = async () => {
     await loadSettings();
@@ -186,143 +203,31 @@ export default function SettingsScreen({ navigation }) {
     if (syncTime) setLastSync(syncTime);
   };
 
-  const handleLogout = async () => {
-    try {
-      console.log('🚪 Logout (clear session table)...');
-
-      await db.runAsync(`DELETE FROM user_session`);
-
-      console.log('🧹 Semua data session terhapus');
-
-      // redirect ke login
-      router.replace('/LoginScreen');
-
-    } catch (err) {
-      console.error('❌ Logout Error:', err.message);
-    }
-  };
+  const updateTimeOP = async (key, value) => {
+    const newSettings = { ...settings, [key]: value };
+      setSettings(newSettings);
+  }
   const updateSetting = async (key, value) => {
-    console.log('\n=== UPDATE SETTING ===');
-    console.log('KEY:', key);
-    console.log('VALUE:', value);
-
     try {
-      // =========================
-      // 1. HOLIDAY MODE
-      // =========================
-      if (key === 'holiday_mode') {
-        const dbValue = value ? 1 : 0;
+      // 1. MAPPING NAMA KOLOM (Sangat Penting!)
+      // Jika key dari UI adalah 'holiday_mode', ubah menjadi 'is_holiday_mode' agar cocok dengan SQLite
+      const dbCol = (key === 'holiday_mode') ? 'is_holiday_mode' : key;
 
-        await db.runAsync(
-          `UPDATE school_settings SET is_holiday_mode = ? WHERE id = 1`,
-          [dbValue]
-        );
+      // 2. Update UI & Storage
+      const newSettings = { ...settings, [key]: value };
+      setSettings(newSettings);
+      await AsyncStorage.setItem('@app_settings', JSON.stringify(newSettings));
 
-        const { error } = await supabase
-          .from('school_profile')
-          .upsert({
-            id: 1,
-            is_holiday_mode: value,
-            last_updated: new Date().toISOString()
-          });
-
-        if (error) console.log('❌ Supabase:', error.message);
-
-        const newSettings = { ...settings, holiday_mode: value };
-        setSettings(newSettings);
-        await AsyncStorage.setItem('@app_settings', JSON.stringify(newSettings));
-
-        console.log('✅ HOLIDAY UPDATED');
-        return;
-      }
-
-      // =========================
-      // 2. CHECKIN TIME (START + END)
-      // =========================
-    } catch (e) {
-      console.log('❌ UPDATE SETTING ERROR:', e.message);
-    }
-  };
-
-  const handleSubmitTime = async (key) => {
-    const value = settings[key];
-    const isValidTime = (time) => {
-      return /^([01]\d|2[0-3]):([0-5]\d)$/.test(time);
-    };
-    console.log('\n=== SUBMIT TIME ===');
-    console.log('KEY:', key);
-    console.log('VALUE:', value);
-
-    // ✅ Validasi dulu
-    if (!isValidTime(value)) {
-      Alert.alert('Format salah', 'Gunakan HH:MM');
-      return;
-    }
-
-    try {
-      // =========================
-      // 1. CHECKIN
-      // =========================
-      if (key === 'checkin_time_start') {
-        const startTime = value;
-        const endTime = value; // sementara sama
-
-        console.log('➡️ MODE: CHECKIN');
-
-        await db.runAsync(
-          `UPDATE school_settings 
-         SET time_in_start = ?, time_in_end = ?
-         WHERE id = 1`,
-          [startTime, endTime]
-        );
-
-        const { error } = await supabase
-          .from('school_profile')
-          .upsert({
-            id: 1,
-            time_in_start: startTime,
-            time_in_end: endTime,
-            last_updated: new Date().toISOString()
-          });
-
-        if (error) console.log('❌ Supabase:', error.message);
-
-        const newSettings = {
-          ...settings,
-          checkin_time: startTime,
-          checkin_time_end: endTime
-        };
-
-        setSettings(newSettings);
-        await AsyncStorage.setItem('@app_settings', JSON.stringify(newSettings));
-
-        console.log('✅ CHECKIN UPDATED');
-        return;
-      }
-
-      // =========================
-      // 2. GENERAL
-      // =========================
-      const columnMap = {
-        checkin_time_end: 'time_in_end',
-        checkout_time_start: 'time_out_start'
-      };
-
-      const dbCol = columnMap[key];
-
-      console.log('➡️ MODE: GENERAL');
-      console.log('DB COL:', dbCol);
-
-      if (!dbCol) {
-        console.warn('❌ Key tidak dikenali:', key);
-        return;
-      }
+      // 3. UPDATE SQLITE (Penyebab Error Anda di sini)
+      // Pastikan menggunakan dbCol yang sudah di-mapping
+      const dbValue = typeof value === 'boolean' ? (value ? 1 : 0) : (value ?? "");
 
       await db.runAsync(
         `UPDATE school_settings SET ${dbCol} = ? WHERE id = 1`,
-        [value]
+        [dbValue]
       );
 
+      // 4. UPDATE SUPABASE
       const { error } = await supabase
         .from('school_profile')
         .upsert({
@@ -331,19 +236,17 @@ export default function SettingsScreen({ navigation }) {
           last_updated: new Date().toISOString()
         });
 
-      if (error) console.log('❌ Supabase:', error.message);
-
-      const newSettings = { ...settings, [key]: value };
-
-      setSettings(newSettings);
-      await AsyncStorage.setItem('@app_settings', JSON.stringify(newSettings));
-
-      console.log('✅ GENERAL UPDATED');
+      if (error) console.log("Supabase Sync Error:", error.message);
+      else {
+        setSuccessVisible(true);
+        console.log("✅ Berhasil Sinkron Lokal & Cloud");
+      }
 
     } catch (e) {
-      console.error('❌ Update Error:', e.message);
+      console.error("Update Error:", e.message);
     }
   };
+
   const handlePickLogo = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
@@ -368,14 +271,67 @@ export default function SettingsScreen({ navigation }) {
       setUploadProgress(100);
       setTimeout(() => {
         setUploadVisible(false);
-        Alert.alert("Berhasil", "Logo cloud diperbarui.");
+        setSuccessVisible(true);
       }, 500);
     } else {
       setUploadVisible(false);
       Alert.alert("Gagal Upload", res.message);
     }
   };
+  // Fungsi ini dipicu saat tombol logout di UI diklik
+  const handleLogout = () => {
+    setAlertVisible(true);
+  };
 
+  // Fungsi ini dipicu saat user klik "KELUAR" di CustomAlert
+  const executeLogout = async () => {
+    try {
+      setAlertVisible(false); // Tutup modal
+      console.log('🚪 Logout (clear session table)...');
+
+      await db.runAsync(`DELETE FROM user_session`);
+
+      console.log('🧹 Semua data session terhapus');
+      router.replace('/LoginScreen');
+    } catch (err) {
+      console.error('❌ Logout Error:', err.message);
+    }
+  };
+  const handleSaveAllSettings = async () => {
+    const { checkin_time, checkout_time } = settings;
+
+    try {
+      // 1. Validasi Sederhana
+      if (!checkin_time || !checkout_time) {
+        return Alert.alert("Peringatan", "Jam masuk dan pulang tidak boleh kosong.");
+      }
+
+      // 2. Simpan ke SQLite (Lokal)
+      await db.runAsync("UPDATE school_settings SET time_in_start = ?, time_in_end = ? WHERE id = 1",
+        [checkin_time, checkout_time]
+      );
+      // 3. Simpan ke Supabase (Cloud)
+      const { error } = await supabase
+        .from('school_profile')
+        .update({
+          time_in_start: checkin_time,
+          time_in_end: checkout_time
+        })
+        .eq('id', 1);
+
+      if (error) throw error;
+      const allRows = await db.getAllAsync("SELECT * FROM school_settings");
+      console.log(allRows);
+      Toast.show({
+        type: 'success',
+        text1: 'Jadwal Operasional Diperbarui',
+        text2: 'Jadwal baru telah disimpan dan disinkronkan ke cloud.'
+      });
+    } catch (err) {
+      console.error(err);
+      Alert.alert("Gagal Sinkron", "Pengaturan tersimpan di lokal, namun gagal mengunggah ke cloud.");
+    }
+  };
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -418,48 +374,54 @@ export default function SettingsScreen({ navigation }) {
                 <Text style={styles.editBtnText}>Ubah Nama Pesantren</Text>
               </TouchableOpacity>
             </GlassmorphicBox>
+            <View style={styles.configContainer}>
+              <Text style={styles.configHeader}>JADWAL OPERASIONAL</Text>
 
-            <Text style={styles.sectionLabel}>Jadwal Absensi</Text>
-            <Card style={styles.groupCard}>
-              <View style={styles.settingItem}>
-                <Clock color={Theme.primary} size={20} />
-                <View style={{ flex: 1, marginLeft: 15 }}>
-                  <Text style={styles.itemTitle}>Jam Masuk</Text>
+              <View style={styles.glassCard}>
+                <View style={styles.inputWrapper}>
+                  {/* Kolom Kiri: Jam Masuk */}
+                  <View style={styles.timeBox}>
+                    <View style={styles.labelRow}>
+                      <Clock size={14} color={Theme.primary} />
+                      <Text style={styles.boxLabel}>MASUK</Text>
+                    </View>
+                    <TextInput
+                      style={styles.modernInput}
+                      value={settings.checkin_time}
+                      onChangeText={(v) => updateTimeOP('checkin_time', v)}
+                      keyboardType="numbers-and-punctuation"
+                      placeholder="07:00"
+                    />
+                  </View>
+
+                  <View style={styles.verticalLine} />
+
+                  {/* Kolom Kanan: Jam Pulang */}
+                  <View style={styles.timeBox}>
+                    <View style={styles.labelRow}>
+                      <Clock size={14} color={Theme.primary} />
+                      <Text style={styles.boxLabel}>PULANG</Text>
+                    </View>
+                    <TextInput
+                      style={styles.modernInput}
+                      value={settings.checkout_time}
+                      onChangeText={(v) => updateTimeOP('checkout_time', v)}
+                      keyboardType="numbers-and-punctuation"
+                      placeholder="16:00"
+                    />
+                  </View>
                 </View>
-                <TextInput
-                  style={styles.timeInput}
 
-                  value={settings.checkin_time_start}
-                  onChangeText={(v) =>
-                    setSettings(prev => ({ ...prev, checkin_time_start: v }))
-                  }
-                  keyboardType="numeric"
-                  returnKeyType="done"
-                  onSubmitEditing={() => handleSubmitTime('checkin_time_start')}
-                />
-
+                <TouchableOpacity
+                  style={styles.glowButton}
+                  onPress={handleSaveAllSettings}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.glowButtonText}>UPDATE JADWAL</Text>
+                  <Check size={18} color="#000" strokeWidth={3} />
+                </TouchableOpacity>
               </View>
-              <View style={styles.divider} />
-              <View style={styles.settingItem}>
-                <Clock color={Theme.primary} size={20} />
-                <View style={{ flex: 1, marginLeft: 15 }}>
-                  <Text style={styles.itemTitle}>Jam Pulang</Text>
-                </View>
-                <TextInput
-                  style={styles.timeInput}
-                  value={settings.checkout_time_start}
-                  onChangeText={(v) =>
-                    setSettings(prev => ({ ...prev, checkout_time_start: v }))
-                  }
-                  keyboardType="numeric"
-                  returnKeyType="done"
-                  blurOnSubmit={true}
-                  onSubmitEditing={() =>
-                    handleSubmitTime('checkout_time_start')
-                  }
-                />
-              </View>
-            </Card>
+            </View>
           </View>
         ) : (
           <View>
@@ -557,6 +519,16 @@ export default function SettingsScreen({ navigation }) {
           <LogOut color={Theme.danger} size={20} />
           <Text style={styles.logoutText}>Keluar Akun</Text>
         </TouchableOpacity>
+        <CustomAlert
+          visible={alertVisible}
+          type="warning"
+          title="Konfirmasi Logout"
+          message="Apakah Anda yakin ingin keluar? Anda harus login kembali untuk mengakses data absensi."
+          confirmText="KELUAR"
+          cancelText="BATAL"
+          onConfirm={executeLogout}
+          onCancel={() => setAlertVisible(false)}
+        />
       </ScrollView>
 
       {/* MODAL UPLOAD PROGRESS */}
@@ -584,6 +556,14 @@ export default function SettingsScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+      <CustomAlert
+        visible={successVisible}
+        type="success"
+        title="update Berhasil!"
+        // message="Data Anda terkirim ke server."
+        // Kosongkan onConfirm atau jangan beri teks jika ingin menyembunyikan fungsinya
+        onConfirm={() => setSuccessVisible(false)}
+      />
     </View>
   );
 }
@@ -626,8 +606,8 @@ const styles = StyleSheet.create({
   wideBtnTitle: { color: Theme.textMain, fontSize: 16, fontWeight: '700' },
   wideBtnDesc: { color: Theme.textMuted, fontSize: 11 },
   syncStatus: { textAlign: 'center', color: Theme.textMuted, fontSize: 10, marginTop: 15 },
-  groupCard: { borderRadius: 28, marginBottom: 25, overflow: 'hidden' },
-  settingItem: { flexDirection: 'row', alignItems: 'center', padding: 20 },
+  groupCard: { borderRadius: 28, marginBottom: 25, overflow: 'hidden', padding: 20 },
+  settingItem: { flexDirection: 'row', alignItems: 'center', padding: 10 },
   itemTitle: { color: Theme.textMain, flex: 1, fontWeight: '600', fontSize: 15 },
   divider: { height: 1, backgroundColor: hexToRGBA(Theme.border, 0.3), marginHorizontal: 10 },
   logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 20 },
@@ -645,5 +625,86 @@ const styles = StyleSheet.create({
   input: { backgroundColor: '#000', color: '#FFF', padding: 18, borderRadius: 18, fontSize: 16, marginBottom: 20, borderWidth: 1, borderColor: '#444' },
   modalButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: 15 },
   saveBtn: { backgroundColor: Theme.primary, paddingHorizontal: 30, paddingVertical: 14, borderRadius: 15 },
-  cancelBtn: { padding: 14 }
+  cancelBtn: { padding: 14 },
+  configContainer: {
+    marginVertical: 20,
+    paddingHorizontal: 2,
+  },
+  configHeader: {
+    color: Theme.primary,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 2,
+    marginBottom: 12,
+    marginLeft: 5,
+  },
+  glassCard: {
+    backgroundColor: hexToRGBA(Theme.card, 0.8),
+    borderRadius: 30,
+    padding: 25,
+    borderWidth: 1,
+    borderColor: hexToRGBA(Theme.primary, 0.2),
+    // Efek Shadow Glow
+    shadowColor: Theme.primary,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 25,
+  },
+  timeBox: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  boxLabel: {
+    color: Theme.textMuted,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  modernInput: {
+    color: Theme.textMain,
+    fontSize: 24,
+    fontWeight: '900',
+    textAlign: 'center',
+    backgroundColor: hexToRGBA('#000', 0.3),
+    width: '90%',
+    paddingVertical: 12,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: hexToRGBA(Theme.border, 0.5),
+  },
+  verticalLine: {
+    width: 1,
+    height: 40,
+    backgroundColor: hexToRGBA(Theme.border, 0.2),
+  },
+  glowButton: {
+    backgroundColor: Theme.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 20,
+    gap: 12,
+    // Penekanan pada tombol
+    transform: [{ scale: 1 }],
+  },
+  glowButtonText: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 1,
+  }
 });

@@ -5,10 +5,10 @@ import * as Speech from 'expo-speech';
 import { CheckCircle2, History, XCircle } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Toast from 'react-native-toast-message';
 import GlassmorphicBox from '../../components/GlassmorphicBox';
-import { LocalDB } from '../../database/sqlite';
+import { db, LocalDB } from '../../database/sqlite';
 import { Theme } from '../../theme/colors';
-
 export default function AttendanceScreen() {
   const isFocused = useIsFocused();
   const [permission, requestPermission] = useCameraPermissions();
@@ -74,57 +74,95 @@ export default function AttendanceScreen() {
   }
 
   const handleBarCodeScanned = async ({ data }) => {
+  const settingsHoliday = await db.getFirstAsync('SELECT is_holiday_mode FROM school_settings LIMIT 1');
+  const isHoliday = settingsHoliday?.is_holiday_mode === 1;
+  console.log("Status Hari Libur (Scan):", isHoliday);
+  if (isHoliday) {
+    Toast.show({
+      type: 'error',
+      text1: 'Sistem Terkunci',
+      text2: 'Tidak bisa scan di hari libur/perizinan 🚩',
+    });
+    return;
+  }
     if (scanned || !isFocused) return;
     setScanned(true);
 
     try {
-      // Cari di memori (jauh lebih ringan dibanding query DB terus-menerus)
+      // 1. Cari siswa di memori
       const student = studentsList.current.find(s => s.nis === data || s.nisn === data);
-
       if (!student) {
         provideFeedback('error', "Tidak Dikenal", "Data tidak ditemukan");
         return;
       }
 
+      // 2. Ambil jam operasional & waktu sekarang
+      const settings = await LocalDB.getSchoolProfile();
+      const currentTimeStr = new Date().toLocaleTimeString('en-GB', {
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      // const currentTimeStr = new Date().toLocaleTimeString('en-GB', { hour12: false }).slice(0, 5);
+
+      // --- LOGIKA A: CEK URUTAN ABSEN ---
+      if (mode === 'pulang') {
+        const alreadyIn = await LocalDB.checkAlreadyAbsent(student.nis, 'masuk');
+        if (!alreadyIn) {
+          provideFeedback('error', student.name, "BELUM ABSEN MASUK");
+          await Speech.stop();
+          Speech.speak(`Maaf ${student.name}, kamu belum absen masuk pagi tadi`, { language: 'id-ID' });
+          return;
+        }
+      }
+
+      // --- LOGIKA B: CEK TOLERANSI WAKTU (15 MENIT) ---
+      const targetTime = mode === 'masuk' ? settings?.time_in_start : settings?.time_in_end;
+      const isTimely = LocalDB.validateTimeWindow(currentTimeStr, targetTime, 15);
+
+      if (!isTimely) {
+        // Tambahkan ini di handleBarCodeScanned
+console.log("JAM SEKARANG:", currentTimeStr);
+console.log("JAM TARGET DB:", targetTime);
+
+
+console.log("HASIL VALIDASI:", isTimely);
+        provideFeedback('error', student.name, "WAKTU TIDAK SESUAI");
+        await Speech.stop();
+        Speech.speak(`Waktu absen salah. Jadwal jam ${targetTime}`, { language: 'id-ID' });
+        return;
+      }
+
+      // --- LOGIKA C: CEK DOUBLE ABSEN ---
       const isAlready = await LocalDB.checkAlreadyAbsent(student.nis, mode);
       if (isAlready) {
         provideFeedback('error', student.name, `SUDAH ABSEN ${mode.toUpperCase()}`);
         await Speech.stop();
-        setTimeout(() => {
-          Speech.speak(`${student.name}, sudah absen`, {
-            language: 'id-ID',
-            pitch: 1.0,
-            rate: 0.9, // Sedikit diperlambat agar terdengar lebih jelas di lingkungan sekolah yang ramai
-          });
-        }, 2900);
+        Speech.speak(`${student.name}, sudah absen ${mode}`, { language: 'id-ID' });
         return;
       }
 
+      // --- BERHASIL: SIMPAN DATA ---
       await LocalDB.saveAttendance(student.nis, 'hadir', mode);
 
-      const newLog = {
+      // Update Logs & UI
+      setSessionLogs(prev => [{
         id: Date.now().toString(),
         name: student.name,
-        time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-      };
+        time: currentTimeStr,
+      }, ...prev]);
 
-      setSessionLogs(prev => [newLog, ...prev]);
       setLastStudent(student);
-
       provideFeedback('success', student.name, `BERHASIL ABSEN ${mode.toUpperCase()}`);
 
       await Speech.stop();
-      setTimeout(() => {
-        Speech.speak(`Hadir ${mode}, ${student.name}`, {
-          language: 'id-ID',
-          pitch: 1.0,
-          rate: 1.0 // Gunakan rate 1.0 agar intonasi natural
-        });
-      }, 150);
+      Speech.speak(`Hadir ${mode}, ${student.name}`, { language: 'id-ID' });
+
     } catch (error) {
-      console.error(error);
+      console.error("Scan Error:", error);
       setScanned(false);
     }
+    
   };
 
   const provideFeedback = (type, name, msg) => {

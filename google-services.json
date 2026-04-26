@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "940437544045",
+    "project_id": "aone-smart-present-4257d",
+    "storage_bucket": "aone-smart-present-4257d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:940437544045:android:67029b0a033e7754637364",
+        "android_client_info": {
+          "package_name": "com.aone.smartpresent"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAl3zaZJTCM-D7yjhCcpXaD9oEA1sVGSBY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

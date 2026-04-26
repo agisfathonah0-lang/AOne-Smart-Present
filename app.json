@@ -15,6 +15,7 @@
       }
     },
     "android": {
+      "googleServicesFile": "./google-services.json",
       "package": "com.aone.smartpresent",
       "newArchEnabled": false,
       "adaptiveIcon": {
@@ -39,7 +40,8 @@
         }
       ],
       "expo-sqlite",
-      "expo-sharing"
+      "expo-sharing",
+      "expo-background-task"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -48,8 +50,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "fd1d23af-b34e-4b5a-91ca-a797b8239ebf"
+        "projectId": "cf8436d8-c49a-461a-9470-6ec0043c10d9"
       }
-    }
+    },
+    "owner": "agis123"
   }
 }

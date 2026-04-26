@@ -91,19 +91,45 @@ export const LocalDB = {
   },
 getSchoolProfile: async () => {
   try {
-    // Pakai try catch block yang sangat ketat
+    // Tambahkan kolom waktu ke dalam query SELECT
     const result = await db?.getFirstAsync(
-      'SELECT school_name, school_logo FROM school_settings WHERE id = 1'
+      'SELECT school_name, school_logo, time_in_start, time_in_end FROM school_settings WHERE id = 1'
     );
+
+    // Gunakan optional chaining (?.) untuk menghindari NullPointerException
     return { 
-      // school_name: result.school_name || 'Ponpes Miftahul Ulum', 
-      school_name: result.school_name , 
-      school_logo: result.school_logo 
+      school_name: result?.school_name || 'Yayasan Muhammad Al Mumtaz', 
+      school_logo: result?.school_logo || null,
+      time_in_start: result?.time_in_start || '07:00', // Fallback jam masuk
+      time_in_end: result?.time_in_end || '16:00'      // Fallback jam pulang
     };
   } catch (error) {
-    // Log error secara detail untuk debugging
     console.log("Detail Error SQLite:", JSON.stringify(error));
-    return { school_name: 'Error Koneksi DB', school_logo: null };
+    // Kembalikan objek default agar pemanggil fungsi tidak error saat akses properti
+    return { 
+      school_name: 'Error Koneksi DB', 
+      school_logo: null,
+      time_in_start: '07:00',
+      time_in_end: '16:00'
+    };
+  }
+},
+validateTimeWindow: (currentTime, targetTime, windowMinutes = 15) => {
+  try {
+    if (!targetTime) return true; // Jika jam tidak diatur, anggap bebas
+
+    // Memecah "HH:mm" menjadi angka
+    const [currH, currM] = currentTime.split(':').map(Number);
+    const [tarH, tarM] = targetTime.split(':').map(Number);
+
+    // Konversi ke total menit untuk perbandingan mudah
+    const currentTotal = currH * 60 + currM;
+    const targetTotal = tarH * 60 + tarM;
+
+    const diff = Math.abs(currentTotal - targetTotal);
+    return diff <= windowMinutes; // Mengembalikan true jika masuk rentang 15 menit
+  } catch (e) {
+    return false;
   }
 },
 getStaff: async () => {
